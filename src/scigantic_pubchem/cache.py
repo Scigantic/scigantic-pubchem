@@ -22,6 +22,14 @@ enough to make a notebook session or a multi-day analysis fast without
 repeatedly hitting PUG REST, short enough that the cache doesn't silently
 diverge from PubChem for months. Pass ttl_days=None to disable expiry
 entirely if that tradeoff is wrong for a specific use case.
+
+Reads and writes of individual entries are safe to call concurrently (the
+write path writes to a temp file and os.replace()s it into place, so a
+reader never observes a partial write). enable_cache()/disable_cache()
+themselves are not synchronized against concurrent reads -- like most
+one-time configuration calls (comparable to mutating os.environ), they are
+meant to be called once at the start of a script or session, not toggled
+from multiple threads at once.
 """
 
 from __future__ import annotations

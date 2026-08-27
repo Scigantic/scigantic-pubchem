@@ -16,6 +16,7 @@ call here reads the header and backs off proactively when status is not
 from __future__ import annotations
 
 import re
+import threading
 import time
 import warnings
 from typing import Any
@@ -61,13 +62,22 @@ def _parse_throttle_header(value: str | None) -> str:
 
 
 _session: requests.Session | None = None
+_session_lock = threading.Lock()
 
 
 def _get_session() -> requests.Session:
+    """Lazily create the shared Session under a lock, so two threads
+    resolving identifiers concurrently (a real, plausible pattern -- e.g. a
+    ThreadPoolExecutor over a list of names) can't both see _session as
+    None and each construct one, leaking a connection pool. requests.Session
+    itself is documented thread-safe for issuing requests once constructed;
+    only the lazy-init race needed guarding."""
     global _session
     if _session is None:
-        _session = requests.Session()
-        _session.headers["User-Agent"] = _USER_AGENT
+        with _session_lock:
+            if _session is None:  # re-check: another thread may have won the race
+                _session = requests.Session()
+                _session.headers["User-Agent"] = _USER_AGENT
     return _session
 
 

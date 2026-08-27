@@ -60,7 +60,11 @@ pubchem.substructure_search("[#6]1[#6][#6][#6][#6][#6]1", query_type="smarts")  
 
 `scigantic-chembl`'s `similar_compounds()`/`substructure_search()` precompute fingerprints once and search them locally, fast but bounded to the ~1.68M ChEMBL compounds that carry a comparable measurement. This runs the search on PubChem's own servers, live, over the full corpus -- verified sub-second for a typical query, no local fingerprint database to build or keep in memory. PubChemPy exposes the same PUG REST capability, but only as a raw `searchtype="similarity"`/`"substructure"` parameter to its generic `get_compounds()`, not a named function -- and `query_type="smiles"` vs `"smarts"` are genuinely different endpoints with different matching semantics here (verified live: the same ring given as SMILES vs SMARTS returns overlapping but not identical results), so this doesn't guess which one a string is meant to be.
 
-An expensive search can respond asynchronously (PubChem hands back a job to poll rather than blocking); handled transparently, the same protocol PubChemPy implements.
+An expensive search can respond asynchronously (PubChem hands back a job to poll rather than blocking); handled transparently, the same protocol PubChemPy implements. Every live query tried during development resolved synchronously, even a maximally broad single-carbon substructure search -- the polling loop itself is verified with a scripted mock response sequence rather than left checked only against documentation.
+
+## Thread safety
+
+Safe to call from multiple threads (a plausible real pattern -- resolving a list of names via a `ThreadPoolExecutor`, say). The shared HTTP session is created once behind a lock rather than raced into existence by whichever thread gets there first. `enable_cache()`/`disable_cache()` are not synchronized against concurrent reads, the same way mutating `os.environ` isn't -- call them once at the start of a script, not from multiple threads at once.
 
 ## Live bridge into scigantic-chembl and scigantic-bindingdb
 
