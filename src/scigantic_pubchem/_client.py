@@ -1,0 +1,133 @@
+"""HTTP client for PubChem's PUG REST API, with the two things PubChemPy
+does not do: respect PubChem's own live rate-limit signal, and retry
+transient failures instead of raising immediately.
+
+Verified 2026-08-27: every PUG REST response carries an X-Throttling-Control
+header reporting live status across three dimensions, e.g.
+    Request Count status: Green (0%), Request Time status: Green (0%), Service status: Green (27%)
+This is PubChem's own documented, real-time signal for how close a caller is
+to being throttled -- and PubChemPy 1.0.5's source (inspected directly, not
+assumed) never reads this header at all: on an HTTPError it raises
+immediately with no retry, and it has no rate-awareness beyond that. Every
+call here reads the header and backs off proactively when status is not
+"Green" on any dimension, rather than waiting to be rejected.
+"""
+
+from __future__ import annotations
+
+import re
+import time
+import warnings
+from typing import Any
+
+import requests
+
+from . import cache
+
+_BASE = "https://pubchem.ncbi.nlm.nih.gov/rest/pug"
+_USER_AGENT = "scigantic-pubchem/0.1.0 (+https://scigantic.com; mailto:support@scigantic.com)"
+
+_THROTTLE_RE = re.compile(r"(\w[\w ]*?) status: (Green|Yellow|Red) \((\d+)%\)")
+
+# Backoff seconds by worst observed status across the three dimensions.
+_BACKOFF_SECONDS = {"Green": 0.0, "Yellow": 2.0, "Red": 10.0}
+
+_MAX_RETRIES = 5
+_RETRY_STATUS_CODES = {429, 500, 502, 503, 504}
+
+
+class PubChemError(Exception):
+    """Raised for a PUG REST error response (4xx/5xx after retries exhausted)."""
+
+
+class CompoundNotFoundError(PubChemError):
+    """Raised for a 404 (PUGREST.NotFound) -- a real, expected outcome for
+    an unmatched identifier, not a transient failure. Verified live
+    2026-08-27: PUG REST returns HTTP 404 with a JSON Fault body for a
+    miss, not an empty 200 -- resolve() catches this and returns None
+    rather than letting every caller handle the exception itself."""
+
+
+def _parse_throttle_header(value: str | None) -> str:
+    """Worst status ('Green'/'Yellow'/'Red') across all reported dimensions."""
+    if not value:
+        return "Green"
+    statuses = [m.group(2) for m in _THROTTLE_RE.finditer(value)]
+    if "Red" in statuses:
+        return "Red"
+    if "Yellow" in statuses:
+        return "Yellow"
+    return "Green"
+
+
+_session: requests.Session | None = None
+
+
+def _get_session() -> requests.Session:
+    global _session
+    if _session is None:
+        _session = requests.Session()
+        _session.headers["User-Agent"] = _USER_AGENT
+    return _session
+
+
+def request(path: str, params: dict[str, Any] | None = None, method: str = "GET") -> dict[str, Any]:
+    """GET (or POST, for long identifier lists) a PUG REST path and return
+    the parsed JSON body.
+
+    path is appended to https://pubchem.ncbi.nlm.nih.gov/rest/pug, e.g.
+    "/compound/name/aspirin/property/MolecularWeight/JSON".
+
+    Backs off proactively based on X-Throttling-Control before it becomes a
+    429, and retries 429/5xx with exponential backoff (PubChemPy does
+    neither) rather than raising on the first transient failure.
+
+    Cached (see cache.py) keyed by (path, params) when caching is enabled,
+    which it is by default -- a repeated lookup in the same or a later
+    process never touches the network at all.
+    """
+    if method == "GET":
+        cached = cache.get(path, params)
+        if cached is not None:
+            return cached
+
+    session = _get_session()
+    url = f"{_BASE}{path}"
+    last_exc: Exception | None = None
+
+    for attempt in range(_MAX_RETRIES):
+        try:
+            if method == "POST":
+                response = session.post(url, data=params, timeout=30)
+            else:
+                response = session.get(url, params=params, timeout=30)
+        except requests.RequestException as exc:
+            last_exc = exc
+            time.sleep(2 ** attempt)
+            continue
+
+        status = _parse_throttle_header(response.headers.get("X-Throttling-Control"))
+        if response.status_code in _RETRY_STATUS_CODES and attempt < _MAX_RETRIES - 1:
+            wait = max(_BACKOFF_SECONDS[status], 2 ** attempt)
+            warnings.warn(
+                f"PUG REST returned {response.status_code} (throttle status {status}); "
+                f"retrying in {wait:.1f}s (attempt {attempt + 1}/{_MAX_RETRIES})",
+                stacklevel=2,
+            )
+            time.sleep(wait)
+            continue
+        if response.status_code == 404:
+            raise CompoundNotFoundError(f"no match for {url}")
+        if response.status_code >= 400:
+            raise PubChemError(f"PUG REST {response.status_code} for {url}: {response.text[:500]}")
+
+        if status != "Green":
+            # Proactive backoff even on success, so a run of calls doesn't
+            # walk itself into a 429 a few requests later.
+            time.sleep(_BACKOFF_SECONDS[status])
+        body: dict[str, Any] = response.json()
+        if method == "GET":
+            cache.put(path, params, body)
+        return body
+
+    raise PubChemError(f"PUG REST request failed after {_MAX_RETRIES} attempts: {last_exc}")
