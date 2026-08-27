@@ -9,6 +9,7 @@ from .cache import cache_dir, disable_cache, enable_cache, is_cache_enabled
 from .cache import clear as clear_cache
 from .models import Compound
 from .resolve import resolve, resolve_many
+from .similarity import similar_compounds, substructure_search
 from .xrefs import chembl_id, xrefs
 
 try:
@@ -20,6 +21,8 @@ except PackageNotFoundError:
 __all__ = [
     "resolve",
     "resolve_many",
+    "similar_compounds",
+    "substructure_search",
     "xrefs",
     "chembl_id",
     "chembl_context",

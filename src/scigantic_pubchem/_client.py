@@ -71,7 +71,12 @@ def _get_session() -> requests.Session:
     return _session
 
 
-def request(path: str, params: dict[str, Any] | None = None, method: str = "GET") -> dict[str, Any]:
+def request(
+    path: str,
+    params: dict[str, Any] | None = None,
+    method: str = "GET",
+    cacheable: bool = True,
+) -> dict[str, Any]:
     """GET (or POST, for long identifier lists) a PUG REST path and return
     the parsed JSON body.
 
@@ -82,11 +87,14 @@ def request(path: str, params: dict[str, Any] | None = None, method: str = "GET"
     429, and retries 429/5xx with exponential backoff (PubChemPy does
     neither) rather than raising on the first transient failure.
 
-    Cached (see cache.py) keyed by (path, params) when caching is enabled,
-    which it is by default -- a repeated lookup in the same or a later
-    process never touches the network at all.
+    Cached (see cache.py) keyed by (path, params) when caching is enabled
+    (the default) and cacheable=True (the default). cacheable=False is for
+    request_search()'s polling calls specifically: caching an intermediate
+    "still waiting" response under the search's own (path, params) key
+    would mean a later, unrelated call to the same search replays that
+    stale in-progress state instead of making a fresh request.
     """
-    if method == "GET":
+    if method == "GET" and cacheable:
         cached = cache.get(path, params)
         if cached is not None:
             return cached
@@ -126,8 +134,34 @@ def request(path: str, params: dict[str, Any] | None = None, method: str = "GET"
             # walk itself into a 429 a few requests later.
             time.sleep(_BACKOFF_SECONDS[status])
         body: dict[str, Any] = response.json()
-        if method == "GET":
+        if method == "GET" and cacheable:
             cache.put(path, params, body)
         return body
 
     raise PubChemError(f"PUG REST request failed after {_MAX_RETRIES} attempts: {last_exc}")
+
+
+def request_search(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Like request(), for PUG REST's search-type endpoints (fastsimilarity_2d,
+    fastsubstructure, fastformula, ...), which can respond either
+    immediately or asynchronously.
+
+    A slow search returns {"Waiting": {"ListKey": "..."}} instead of a
+    result -- this polls /compound/listkey/{key}/cids/JSON every 2s until
+    the real result is ready, the same protocol PubChemPy implements (its
+    source was read directly to confirm this, not assumed from docs).
+
+    Neither the initial call nor the polling calls are cached
+    (cacheable=False): a ListKey is single-use, and caching an
+    intermediate "still waiting" response under the search's own
+    (path, params) key would mean a later, unrelated call to the same
+    search replays that stale in-progress state instead of making a fresh
+    request. Callers that want to avoid repeat searches should cache the
+    resolved CIDs themselves.
+    """
+    body = request(path, params, method="GET", cacheable=False)
+    while "Waiting" in body and "ListKey" in body.get("Waiting", {}):
+        time.sleep(2)
+        listkey = body["Waiting"]["ListKey"]
+        body = request(f"/compound/listkey/{listkey}/cids/JSON", method="GET", cacheable=False)
+    return body

@@ -9,6 +9,7 @@ import sys
 from typing import Sequence, cast
 
 from .resolve import resolve
+from .similarity import similar_compounds, substructure_search
 from .xrefs import chembl_id, xrefs
 
 
@@ -36,6 +37,26 @@ def _cmd_xrefs(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_similar(args: argparse.Namespace) -> int:
+    cids = cast(
+        "list[int]",
+        similar_compounds(args.smiles, threshold=args.threshold, max_records=args.max_records, resolve=False),
+    )
+    for cid in cids:
+        print(cid)
+    return 0
+
+
+def _cmd_substructure(args: argparse.Namespace) -> int:
+    cids = cast(
+        "list[int]",
+        substructure_search(args.query, query_type=args.query_type, max_records=args.max_records, resolve=False),
+    )
+    for cid in cids:
+        print(cid)
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scigantic-pubchem")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -55,6 +76,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     xrefs_parser.add_argument("--type", default="RegistryID")
     xrefs_parser.add_argument("--namespace", default="cid", choices=["name", "cid", "smiles", "inchikey", "inchi", "formula"])
     xrefs_parser.set_defaults(func=_cmd_xrefs)
+
+    similar_parser = subparsers.add_parser("similar", help="2D similarity search over PubChem's full corpus")
+    similar_parser.add_argument("smiles")
+    similar_parser.add_argument("--threshold", type=int, default=90)
+    similar_parser.add_argument("--max-records", type=int, default=100, dest="max_records")
+    similar_parser.set_defaults(func=_cmd_similar)
+
+    substructure_parser = subparsers.add_parser("substructure", help="substructure search over PubChem's full corpus")
+    substructure_parser.add_argument("query")
+    substructure_parser.add_argument("--query-type", default="smiles", choices=["smiles", "smarts"], dest="query_type")
+    substructure_parser.add_argument("--max-records", type=int, default=100, dest="max_records")
+    substructure_parser.set_defaults(func=_cmd_substructure)
 
     args = parser.parse_args(argv)
     return cast(int, args.func(args))

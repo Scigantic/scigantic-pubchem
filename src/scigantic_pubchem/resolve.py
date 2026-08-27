@@ -11,11 +11,14 @@ requested name matches the response key.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import quote
 
 from . import _client
 from .models import Compound
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 Namespace = Literal["name", "cid", "smiles", "inchikey", "inchi", "formula"]
 
@@ -67,7 +70,7 @@ def resolve(identifier: str | int, namespace: Namespace = "name") -> Compound | 
     return _record_to_compound(records[0])
 
 
-def resolve_many(cids: list[int | str]) -> list[Compound]:
+def resolve_many(cids: "Sequence[int | str]") -> list[Compound]:
     """Resolve a batch of CIDs in as few PUG REST round trips as possible.
 
     PUG REST accepts a comma-separated CID list in a single request;

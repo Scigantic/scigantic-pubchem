@@ -32,10 +32,12 @@ $ pip install scigantic-pubchem
 
 **Rate-limit awareness.** Every PUG REST response carries an `X-Throttling-Control` header reporting live status across three dimensions (request count, request time, service load). PubChemPy's source never reads this header -- on an error it raises immediately, no retry. This package reads it on every call, backs off proactively before hitting a hard limit, and retries 429/5xx with backoff instead of failing a notebook cell over a transient blip.
 
-**Caching, on by default.** A lookup you've already made is never re-fetched -- cached to `~/.cache/scigantic-pubchem` (override with `enable_cache(cache_dir=...)` or `SCIGANTIC_PUBCHEM_CACHE`). This is a deliberate difference from `scigantic-chembl`/`scigantic-bindingdb`, whose caching defaults off: those read a public S3 mirror with no meaningful rate limit, so caching there is pure convenience. This package calls a rate-limited live API for every lookup, so re-fetching the same identifier in a loop is both slow and the exact thing the throttling-aware client otherwise works to avoid.
+**Caching, on by default -- and it expires.** A lookup you've already made is never re-fetched -- cached to `~/.cache/scigantic-pubchem` (override with `enable_cache(cache_dir=...)` or `SCIGANTIC_PUBCHEM_CACHE`). This is a deliberate difference from `scigantic-chembl`/`scigantic-bindingdb`, whose caching defaults off: those read a public S3 mirror with no meaningful rate limit, so caching there is pure convenience. This package calls a rate-limited live API for every lookup, so re-fetching the same identifier in a loop is both slow and the exact thing the throttling-aware client otherwise works to avoid. Entries expire after 30 days by default, so the cache can't quietly turn into the same kind of stale snapshot this package exists to avoid being:
 
 ```python
-pubchem.disable_cache()  # if you want every call to hit the network fresh
+pubchem.disable_cache()                        # every call hits the network fresh
+pubchem.enable_cache(ttl_days=7)                # shorter freshness window
+pubchem.enable_cache(ttl_days=None)             # never expire
 ```
 
 **Live cross-references, not just structures.**
@@ -45,6 +47,20 @@ pubchem.chembl_id(2244)   # 'CHEMBL25' -- read live from PubChem's own xrefs, no
 ```
 
 PubChem's own `xrefs/RegistryID` endpoint already carries the ChEMBL ID for a compound when one exists (verified live against aspirin, CID 2244 -> CHEMBL25) -- reachable through PubChemPy's low-level `request()`/`get()` functions, but not wrapped as a named, documented convenience there.
+
+**Similarity and substructure search, over PubChem's entire ~120M-compound corpus, not a local index.**
+
+```python
+hits = pubchem.similar_compounds("CC(=O)OC1=CC=CC=C1C(=O)O", threshold=95, max_records=5)
+# [Compound(cid=2244, title='Aspirin', ...), Compound(cid=4133, title='Methyl Salicylate', ...), ...]
+
+pubchem.substructure_search("c1ccccc1", query_type="smiles")     # every compound containing a benzene ring
+pubchem.substructure_search("[#6]1[#6][#6][#6][#6][#6]1", query_type="smarts")  # the SMARTS equivalent
+```
+
+`scigantic-chembl`'s `similar_compounds()`/`substructure_search()` precompute fingerprints once and search them locally, fast but bounded to the ~1.68M ChEMBL compounds that carry a comparable measurement. This runs the search on PubChem's own servers, live, over the full corpus -- verified sub-second for a typical query, no local fingerprint database to build or keep in memory. PubChemPy exposes the same PUG REST capability, but only as a raw `searchtype="similarity"`/`"substructure"` parameter to its generic `get_compounds()`, not a named function -- and `query_type="smiles"` vs `"smarts"` are genuinely different endpoints with different matching semantics here (verified live: the same ring given as SMILES vs SMARTS returns overlapping but not identical results), so this doesn't guess which one a string is meant to be.
+
+An expensive search can respond asynchronously (PubChem hands back a job to poll rather than blocking); handled transparently, the same protocol PubChemPy implements.
 
 ## Live bridge into scigantic-chembl and scigantic-bindingdb
 
@@ -76,6 +92,8 @@ PUG REST accepts a comma-separated CID list in a single request (verified live);
 $ scigantic-pubchem resolve aspirin
 $ scigantic-pubchem chembl-id 2244
 $ scigantic-pubchem xrefs 2244 --type RegistryID
+$ scigantic-pubchem similar "CC(=O)OC1=CC=CC=C1C(=O)O" --threshold 95
+$ scigantic-pubchem substructure c1ccccc1
 ```
 
 ## License

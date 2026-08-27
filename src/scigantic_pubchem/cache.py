@@ -13,6 +13,15 @@ off explicitly.
 Every PUG REST response is cached keyed by its exact request path + params,
 so cache correctness doesn't depend on any function here knowing what a
 "compound" or "cid" is -- see _client.py's request().
+
+Cached entries expire after ttl_days (30 by default). This package's whole
+argument for not mirroring PubChem is that a live query is more correct
+than a stale snapshot -- an indefinitely-cached response would quietly
+recreate that exact staleness inside this package instead. 30 days is long
+enough to make a notebook session or a multi-day analysis fast without
+repeatedly hitting PUG REST, short enough that the cache doesn't silently
+diverge from PubChem for months. Pass ttl_days=None to disable expiry
+entirely if that tradeoff is wrong for a specific use case.
 """
 
 from __future__ import annotations
@@ -21,11 +30,13 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
 _enabled = True
 _cache_dir: Path | None = None
+_ttl_seconds: float | None = 30 * 86400
 
 
 def _default_cache_dir() -> Path:
@@ -47,15 +58,20 @@ def _resolve_dir() -> Path:
     return _cache_dir
 
 
-def enable_cache(cache_dir: str | None = None) -> Path:
+def enable_cache(cache_dir: str | None = None, ttl_days: float | None = 30) -> Path:
     """Turn caching on (it already is, by default) and optionally point it
-    at a specific directory. Returns the resolved directory."""
-    global _enabled, _cache_dir
+    at a specific directory and/or change how long an entry stays valid.
+
+    ttl_days=None disables expiry -- entries are reused forever until
+    clear_cache() or disable_cache(). Returns the resolved directory.
+    """
+    global _enabled, _cache_dir, _ttl_seconds
     if cache_dir is not None:
         _cache_dir = Path(cache_dir)
         _cache_dir.mkdir(parents=True, exist_ok=True)
     else:
         _resolve_dir()
+    _ttl_seconds = ttl_days * 86400 if ttl_days is not None else None
     _enabled = True
     return _cache_dir  # type: ignore[return-value]
 
@@ -86,9 +102,13 @@ def get(path: str, params: dict[str, Any] | None) -> dict[str, Any] | None:
     if not file.exists():
         return None
     try:
-        return json.loads(file.read_text())  # type: ignore[no-any-return]
+        entry = json.loads(file.read_text())
     except (json.JSONDecodeError, OSError):
         return None
+    if _ttl_seconds is not None and time.time() - entry.get("cached_at", 0) > _ttl_seconds:
+        file.unlink(missing_ok=True)
+        return None
+    return entry["value"]  # type: ignore[no-any-return]
 
 
 def put(path: str, params: dict[str, Any] | None, value: dict[str, Any]) -> None:
@@ -96,7 +116,7 @@ def put(path: str, params: dict[str, Any] | None, value: dict[str, Any]) -> None
         return
     file = _resolve_dir() / f"{_key(path, params)}.json"
     tmp = file.with_suffix(".json.part")
-    tmp.write_text(json.dumps(value))
+    tmp.write_text(json.dumps({"cached_at": time.time(), "value": value}))
     os.replace(tmp, file)
 
 
