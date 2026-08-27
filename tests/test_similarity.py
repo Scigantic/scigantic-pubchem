@@ -1,5 +1,5 @@
 """Real queries against PubChem's live fastsimilarity_2d/fastsubstructure
-endpoints -- no local fingerprint database, unlike scigantic-chembl's
+endpoints. No local fingerprint database, unlike scigantic-chembl's
 similar_compounds()/substructure_search()."""
 
 import scigantic_pubchem as pubchem
@@ -26,7 +26,7 @@ def test_substructure_search_smiles():
 
 def test_substructure_search_smarts_is_a_different_endpoint():
     # Verified live: SMILES "c1ccccc1" and its SMARTS equivalent return
-    # overlapping but not identical CID lists -- genuinely different
+    # overlapping but not identical CID lists, genuinely different
     # matching semantics, not two names for the same query.
     smiles_cids = set(pubchem.substructure_search("c1ccccc1", query_type="smiles", max_records=10, resolve=False))
     smarts_cids = set(
@@ -36,7 +36,7 @@ def test_substructure_search_smarts_is_a_different_endpoint():
     )
     assert smiles_cids  # both non-empty
     assert smarts_cids
-    # Not asserting equality -- that would assume something not verified.
+    # Not asserting equality, that would assume something not verified.
 
 
 def test_invalid_query_type_raises():

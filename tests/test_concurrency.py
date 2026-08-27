@@ -1,4 +1,4 @@
-"""Concurrent use from multiple threads -- a real, plausible pattern (e.g.
+"""Concurrent use from multiple threads: a real, plausible pattern (e.g.
 a ThreadPoolExecutor resolving a list of names) that the correctness tests
 elsewhere don't exercise. Confirms the lazily-created shared Session (see
 _client._get_session's lock) survives concurrent first-use without

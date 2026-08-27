@@ -1,15 +1,15 @@
 """Structure similarity and substructure search, live against PubChem's
-entire corpus -- no local fingerprint database needed.
+entire corpus. No local fingerprint database needed.
 
 scigantic-chembl's similar_compounds()/substructure_search() precompute
 Morgan/Pattern fingerprints once and search them locally, because ChEMBL
-has no live search API of its own -- fast, but bounded to the 1.68M
+has no live search API of its own. Fast, but bounded to the 1.68M
 ChEMBL compounds that carry a comparable potency measurement. PubChem
 runs this search itself, live, over its full ~120M-compound corpus
 (fastsimilarity_2d / fastsubstructure), verified sub-second for a typical
 query 2026-08-27. PubChemPy exposes the same PUG REST capability, but only
 as a raw searchtype="similarity"/"substructure" parameter to its generic
-get_compounds() -- not a named, documented function.
+get_compounds(), not a named, documented function.
 
 Both can respond asynchronously for an expensive query (PubChem returns a
 ListKey to poll rather than blocking the connection); see
@@ -38,8 +38,8 @@ def similar_compounds(
     trip; resolve=False returns bare CIDs if that's all that's needed.
 
     PubChem does not return a similarity score alongside the matches, only
-    the list of CIDs -- if you need scored ranking, compute it yourself
-    from the returned structures.
+    the list of CIDs. Compute scored ranking yourself from the returned
+    structures if you need it.
     """
     body = _client.request_search(
         "/compound/fastsimilarity_2d/smiles/cids/JSON",
@@ -57,7 +57,7 @@ def substructure_search(
 ) -> list[Compound] | list[int]:
     """CIDs (or full Compound records) that contain a query substructure.
 
-    query_type is "smiles" (default) or "smarts" -- PubChem runs these as
+    query_type is "smiles" (default) or "smarts". PubChem runs these as
     genuinely different endpoints with different matching semantics
     (verified live: the same ring pattern given as SMILES vs the
     equivalent SMARTS returned overlapping but not identical CID lists),

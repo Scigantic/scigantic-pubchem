@@ -1,4 +1,4 @@
-"""Typed records returned by this package -- PubChemPy returns loosely-typed
+"""Typed records returned by this package. PubChemPy returns loosely-typed
 Compound objects backed by a raw dict; these are plain, typed dataclasses."""
 
 from __future__ import annotations

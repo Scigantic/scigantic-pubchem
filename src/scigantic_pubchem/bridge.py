@@ -1,5 +1,5 @@
 """Cross-reference a PubChem compound into scigantic-chembl and
-scigantic-bindingdb -- both live, on-demand DuckDB httpfs queries against
+scigantic-bindingdb. Both are live, on-demand DuckDB httpfs queries against
 those public mirrors, not a precomputed table shipped with this package.
 
 Needs duckdb: `pip install "scigantic-pubchem[bridge]"`. Everything else in
@@ -69,8 +69,8 @@ def bindingdb_measurements(
 ) -> "pd.DataFrame":
     """Binding measurements scigantic-bindingdb has for this PubChem CID.
 
-    BindingDB's own measurements table already carries a pubchem_cid column
-    -- this is a live filter against it, not a precomputed join, so it
+    BindingDB's own measurements table already carries a pubchem_cid column,
+    so this is a live filter against it, not a precomputed join, and it
     reflects the mirror as it stands with no separate build step.
     """
     con = _connect()

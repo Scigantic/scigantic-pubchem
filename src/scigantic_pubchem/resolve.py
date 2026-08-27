@@ -2,7 +2,7 @@
 a canonical structure and identifiers, in one PUG REST round trip.
 
 Verified 2026-08-27: PUG REST's property endpoint accepts a comma-separated
-property list and returns them all in a single response -- and normalizes
+property list, returns them all in a single response, and normalizes
 some names in the response (a requested "CanonicalSMILES" comes back keyed
 "SMILES", "IsomericSMILES" comes back "ConnectivitySMILES"). This module
 reads by whichever key is actually present rather than assuming the

@@ -6,7 +6,7 @@ Verified 2026-08-27: every PUG REST response carries an X-Throttling-Control
 header reporting live status across three dimensions, e.g.
     Request Count status: Green (0%), Request Time status: Green (0%), Service status: Green (27%)
 This is PubChem's own documented, real-time signal for how close a caller is
-to being throttled -- and PubChemPy 1.0.5's source (inspected directly, not
+to being throttled. PubChemPy 1.0.5's source (inspected directly, not
 assumed) never reads this header at all: on an HTTPError it raises
 immediately with no retry, and it has no rate-awareness beyond that. Every
 call here reads the header and backs off proactively when status is not
@@ -42,10 +42,10 @@ class PubChemError(Exception):
 
 
 class CompoundNotFoundError(PubChemError):
-    """Raised for a 404 (PUGREST.NotFound) -- a real, expected outcome for
+    """Raised for a 404 (PUGREST.NotFound): a real, expected outcome for
     an unmatched identifier, not a transient failure. Verified live
     2026-08-27: PUG REST returns HTTP 404 with a JSON Fault body for a
-    miss, not an empty 200 -- resolve() catches this and returns None
+    miss, not an empty 200. resolve() catches this and returns None
     rather than letting every caller handle the exception itself."""
 
 
@@ -67,7 +67,7 @@ _session_lock = threading.Lock()
 
 def _get_session() -> requests.Session:
     """Lazily create the shared Session under a lock, so two threads
-    resolving identifiers concurrently (a real, plausible pattern -- e.g. a
+    resolving identifiers concurrently (a real, plausible pattern: a
     ThreadPoolExecutor over a list of names) can't both see _session as
     None and each construct one, leaking a connection pool. requests.Session
     itself is documented thread-safe for issuing requests once constructed;
@@ -157,7 +157,7 @@ def request_search(path: str, params: dict[str, Any] | None = None) -> dict[str,
     immediately or asynchronously.
 
     A slow search returns {"Waiting": {"ListKey": "..."}} instead of a
-    result -- this polls /compound/listkey/{key}/cids/JSON every 2s until
+    result, and this polls /compound/listkey/{key}/cids/JSON every 2s until
     the real result is ready, the same protocol PubChemPy implements (its
     source was read directly to confirm this, not assumed from docs).
 

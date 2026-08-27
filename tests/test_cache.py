@@ -104,7 +104,7 @@ def test_disable_cache_hits_network_every_time(tmp_path):
     try:
         assert pubchem.is_cache_enabled() is False
         # Two real calls, no assertion beyond "this doesn't crash and both
-        # resolve" -- proving cache bypass by absence of a cached file.
+        # resolve": proving cache bypass by absence of a cached file.
         pubchem.resolve("water")
         cached_files = list(tmp_path.glob("*.json"))
         assert cached_files == []

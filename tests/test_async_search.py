@@ -2,8 +2,8 @@
 protocol for a slow search (respond with {"Waiting": {"ListKey": ...}} and
 require polling /compound/listkey/{key}/cids/JSON until it resolves).
 
-Every real query tried against the live API during development -- down to
-a single-carbon substructure search, about as broad as a query gets --
+Every real query tried against the live API during development, down to
+a single-carbon substructure search (about as broad as a query gets),
 resolved synchronously in under two seconds, so this path could not be
 observed live. It is real: PubChemPy's own source implements the identical
 protocol, and PubChem's PUG REST documentation describes it for expensive

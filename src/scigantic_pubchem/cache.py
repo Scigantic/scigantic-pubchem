@@ -1,4 +1,4 @@
-"""Local response cache -- ON by default, unlike scigantic-chembl's and
+"""Local response cache, ON by default, unlike scigantic-chembl's and
 scigantic-bindingdb's caching (both default OFF).
 
 That's a deliberate difference, not an inconsistency: those two packages
@@ -12,11 +12,11 @@ off explicitly.
 
 Every PUG REST response is cached keyed by its exact request path + params,
 so cache correctness doesn't depend on any function here knowing what a
-"compound" or "cid" is -- see _client.py's request().
+"compound" or "cid" is; see _client.py's request().
 
 Cached entries expire after ttl_days (30 by default). This package's whole
 argument for not mirroring PubChem is that a live query is more correct
-than a stale snapshot -- an indefinitely-cached response would quietly
+than a stale snapshot, and an indefinitely-cached response would quietly
 recreate that exact staleness inside this package instead. 30 days is long
 enough to make a notebook session or a multi-day analysis fast without
 repeatedly hitting PUG REST, short enough that the cache doesn't silently
@@ -26,8 +26,8 @@ entirely if that tradeoff is wrong for a specific use case.
 Reads and writes of individual entries are safe to call concurrently (the
 write path writes to a temp file and os.replace()s it into place, so a
 reader never observes a partial write). enable_cache()/disable_cache()
-themselves are not synchronized against concurrent reads -- like most
-one-time configuration calls (comparable to mutating os.environ), they are
+themselves are not synchronized against concurrent reads, like most
+one-time configuration calls (comparable to mutating os.environ): they are
 meant to be called once at the start of a script or session, not toggled
 from multiple threads at once.
 """
@@ -70,7 +70,7 @@ def enable_cache(cache_dir: str | None = None, ttl_days: float | None = 30) -> P
     """Turn caching on (it already is, by default) and optionally point it
     at a specific directory and/or change how long an entry stays valid.
 
-    ttl_days=None disables expiry -- entries are reused forever until
+    ttl_days=None disables expiry: entries are reused forever until
     clear_cache() or disable_cache(). Returns the resolved directory.
     """
     global _enabled, _cache_dir, _ttl_seconds

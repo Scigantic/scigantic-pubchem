@@ -1,4 +1,4 @@
-"""Real queries against the live PUG REST API, no mocks -- the whole point
+"""Real queries against the live PUG REST API, no mocks. The whole point
 of this package is that it answers real queries with no local setup."""
 
 import scigantic_pubchem as pubchem
