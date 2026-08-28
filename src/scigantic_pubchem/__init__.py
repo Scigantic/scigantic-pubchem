@@ -10,7 +10,7 @@ from .cache import clear as clear_cache
 from .models import Compound
 from .resolve import resolve, resolve_many
 from .similarity import similar_compounds, substructure_search
-from .xrefs import chembl_id, xrefs
+from .xrefs import chembl_id, chembl_ids_many, xrefs, xrefs_many
 
 try:
     __version__ = _version("scigantic-pubchem")
@@ -24,7 +24,9 @@ __all__ = [
     "similar_compounds",
     "substructure_search",
     "xrefs",
+    "xrefs_many",
     "chembl_id",
+    "chembl_ids_many",
     "chembl_context",
     "bindingdb_measurements",
     "Compound",
