@@ -23,13 +23,16 @@ repeatedly hitting PUG REST, short enough that the cache doesn't silently
 diverge from PubChem for months. Pass ttl_days=None to disable expiry
 entirely if that tradeoff is wrong for a specific use case.
 
-Reads and writes of individual entries are safe to call concurrently (the
-write path writes to a temp file and os.replace()s it into place, so a
-reader never observes a partial write). enable_cache()/disable_cache()
-themselves are not synchronized against concurrent reads, like most
-one-time configuration calls (comparable to mutating os.environ): they are
-meant to be called once at the start of a script or session, not toggled
-from multiple threads at once.
+Reads and writes of individual entries are safe to call concurrently,
+including two threads racing to fill the same key: each write goes to its
+own uniquely-named temp file before an atomic os.replace() into place, so a
+reader never observes a partial write and two concurrent writers of the
+same key never collide on the same temp path (last writer wins, which is
+fine since both are writing an equivalent freshly-fetched response).
+enable_cache()/disable_cache() themselves are not synchronized against
+concurrent reads, like most one-time configuration calls (comparable to
+mutating os.environ): they are meant to be called once at the start of a
+script or session, not toggled from multiple threads at once.
 """
 
 from __future__ import annotations
@@ -39,6 +42,7 @@ import json
 import os
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -123,16 +127,22 @@ def put(path: str, params: dict[str, Any] | None, value: dict[str, Any]) -> None
     if not _enabled:
         return
     file = _resolve_dir() / f"{_key(path, params)}.json"
-    tmp = file.with_suffix(".json.part")
+    # Unique per call, not just per key: two threads racing to fill the same
+    # key must not share a temp path, or the second os.replace() raises
+    # FileNotFoundError once the first has already consumed it.
+    tmp = file.with_suffix(f".json.{uuid.uuid4().hex}.part")
     tmp.write_text(json.dumps({"cached_at": time.time(), "value": value}))
     os.replace(tmp, file)
 
 
 def clear() -> int:
-    """Delete every cached response. Returns how many files were removed."""
+    """Delete every cached response, including any incomplete write left
+    behind by a crash between a temp file's write and its rename. Returns
+    how many files were removed."""
     d = _resolve_dir()
     n = 0
-    for f in d.glob("*.json"):
-        f.unlink()
-        n += 1
+    for pattern in ("*.json", "*.part"):
+        for f in d.glob(pattern):
+            f.unlink()
+            n += 1
     return n

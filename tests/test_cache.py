@@ -1,7 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
 import scigantic_pubchem as pubchem
-from scigantic_pubchem import _client
+from scigantic_pubchem import _client, cache
 
 
 def test_cache_enabled_by_default():
@@ -93,6 +94,38 @@ def test_search_polling_is_never_cached(tmp_path):
             "CC(=O)OC1=CC=CC=C1C(=O)O", threshold=95, max_records=5, resolve=False
         )
         assert list(tmp_path.glob("*.json")) == []
+    finally:
+        pubchem.enable_cache()
+
+
+def test_concurrent_writes_to_the_same_key_never_raise(tmp_path):
+    # Regression test for a real bug: put()'s temp filename used to be
+    # deterministic (derived only from the cache key), so two threads
+    # racing to fill the *same* key shared one temp path. Whichever thread's
+    # os.replace() ran second raised FileNotFoundError, because the first
+    # had already consumed it. Caught via a 32-thread stress run where two
+    # names were each queued from two threads at once. Exercised directly
+    # against cache.put(), not resolve(), so this stays fast and doesn't
+    # depend on winning a real network race to reproduce.
+    pubchem.enable_cache(cache_dir=str(tmp_path))
+    try:
+        pubchem.clear_cache()
+        errors = []
+
+        def write(i):
+            try:
+                cache.put("/same/path", {"k": "v"}, {"call": i})
+            except Exception as e:  # noqa: BLE001
+                errors.append(e)
+
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            list(pool.map(write, range(16)))
+
+        assert errors == []
+        cached_files = list(tmp_path.glob("*.json"))
+        assert len(cached_files) == 1  # all 16 writers converged on one key
+        stray_parts = list(tmp_path.glob("*.part"))
+        assert stray_parts == []  # every temp file was consumed by its own replace
     finally:
         pubchem.enable_cache()
 
