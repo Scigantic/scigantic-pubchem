@@ -1,5 +1,6 @@
-"""HTTP client for PubChem's PUG REST API, with the two things PubChemPy
-does not do: respect PubChem's own live rate-limit signal, and retry
+"""HTTP client for PubChem's PUG REST API, with the three things PubChemPy
+does not do: respect PubChem's own live rate-limit signal, pace requests
+against PubChem's documented limit before they're ever sent, and retry
 transient failures instead of raising immediately.
 
 Verified 2026-08-27: every PUG REST response carries an X-Throttling-Control
@@ -11,6 +12,15 @@ assumed) never reads this header at all: on an HTTPError it raises
 immediately with no retry, and it has no rate-awareness beyond that. Every
 call here reads the header and backs off proactively when status is not
 "Green" on any dimension, rather than waiting to be rejected.
+
+That header-based backoff is still reactive: it only slows a caller down
+after PubChem has already reported elevated load. A burst of concurrent
+requests (resolve_many()'s parallel chunks, or a caller's own thread pool)
+can fire well past PubChem's documented ceiling of 5 requests/second before
+any of them has seen a throttle signal at all. _RateLimiter below is a
+token bucket that every request acquires from first, so a burst is paced
+to the documented limit up front instead of recovering from it after the
+fact.
 """
 
 from __future__ import annotations
@@ -61,6 +71,41 @@ def _parse_throttle_header(value: str | None) -> str:
     return "Green"
 
 
+class _RateLimiter:
+    """A token bucket, so a burst of requests is paced up front instead of
+    relying on X-Throttling-Control to catch it after the fact.
+
+    capacity tokens available immediately (a small burst is fine, PubChem's
+    limit is itself a rate, not a hard cap on simultaneous requests), then
+    refilling at rate tokens/second. acquire() blocks the calling thread
+    until a token is available; safe to call from multiple threads at once,
+    the way resolve_many()'s parallel chunks and a caller's own
+    ThreadPoolExecutor both do.
+    """
+
+    def __init__(self, rate: float, capacity: float) -> None:
+        self._rate = rate
+        self._capacity = capacity
+        self._tokens = capacity
+        self._last = time.monotonic()
+        self._lock = threading.Lock()
+
+    def acquire(self) -> None:
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                self._tokens = min(self._capacity, self._tokens + (now - self._last) * self._rate)
+                self._last = now
+                if self._tokens >= 1:
+                    self._tokens -= 1
+                    return
+                wait = (1 - self._tokens) / self._rate
+            time.sleep(wait)
+
+
+# PubChem's documented limit: no more than 5 requests/second per user.
+_limiter = _RateLimiter(rate=5.0, capacity=5.0)
+
 _session: requests.Session | None = None
 _session_lock = threading.Lock()
 
@@ -93,9 +138,11 @@ def request(
     path is appended to https://pubchem.ncbi.nlm.nih.gov/rest/pug, e.g.
     "/compound/name/aspirin/property/MolecularWeight/JSON".
 
-    Backs off proactively based on X-Throttling-Control before it becomes a
-    429, and retries 429/5xx with exponential backoff (PubChemPy does
-    neither) rather than raising on the first transient failure.
+    Paces every attempt through the shared token bucket (PubChem's
+    documented 5 req/s) before it's sent, backs off further based on
+    X-Throttling-Control before it becomes a 429, and retries 429/5xx with
+    exponential backoff (PubChemPy does none of this) rather than raising
+    on the first transient failure.
 
     Cached (see cache.py) keyed by (path, params) when caching is enabled
     (the default) and cacheable=True (the default). cacheable=False is for
@@ -114,6 +161,7 @@ def request(
     last_exc: Exception | None = None
 
     for attempt in range(_MAX_RETRIES):
+        _limiter.acquire()
         try:
             if method == "POST":
                 response = session.post(url, data=params, timeout=30)

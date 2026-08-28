@@ -11,6 +11,7 @@ requested name matches the response key.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Literal
 from urllib.parse import quote
 
@@ -70,6 +71,16 @@ def resolve(identifier: str | int, namespace: Namespace = "name") -> Compound | 
     return _record_to_compound(records[0])
 
 
+_MAX_CHUNK_WORKERS = 8
+
+
+def _fetch_chunk(chunk: "Sequence[str]") -> list[Compound]:
+    path = f"/compound/cid/{','.join(chunk)}/property/{_PROPERTIES}/JSON"
+    body = _client.request(path)
+    records = body.get("PropertyTable", {}).get("Properties", [])
+    return [_record_to_compound(r) for r in records]
+
+
 def resolve_many(cids: "Sequence[int | str]") -> list[Compound]:
     """Resolve a batch of CIDs in as few PUG REST round trips as possible.
 
@@ -77,14 +88,23 @@ def resolve_many(cids: "Sequence[int | str]") -> list[Compound]:
     verified live 2026-08-27 with a 3-CID batch. Chunked at 200 CIDs per
     request, comfortably under PubChem's practical request-size limits,
     rather than sent as one unbounded URL for a very long list.
+
+    More than one chunk is dispatched to a small thread pool rather than
+    sent one at a time: each chunk is an independent round trip, so a large
+    list (thousands of CIDs, tens of chunks) no longer pays for every
+    chunk's full latency in sequence. Actual request pacing still goes
+    through _client's shared token bucket, so this can't send faster than
+    PubChem's documented rate regardless of how many chunks there are.
     """
-    results: list[Compound] = []
-    chunk_size = 200
     ids = [str(c) for c in cids]
-    for i in range(0, len(ids), chunk_size):
-        chunk = ids[i : i + chunk_size]
-        path = f"/compound/cid/{','.join(chunk)}/property/{_PROPERTIES}/JSON"
-        body = _client.request(path)
-        records = body.get("PropertyTable", {}).get("Properties", [])
-        results.extend(_record_to_compound(r) for r in records)
+    chunk_size = 200
+    chunks = [ids[i : i + chunk_size] for i in range(0, len(ids), chunk_size)]
+
+    if len(chunks) <= 1:
+        return _fetch_chunk(chunks[0]) if chunks else []
+
+    results: list[Compound] = []
+    with ThreadPoolExecutor(max_workers=min(_MAX_CHUNK_WORKERS, len(chunks))) as pool:
+        for chunk_result in pool.map(_fetch_chunk, chunks):
+            results.extend(chunk_result)
     return results
