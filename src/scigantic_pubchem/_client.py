@@ -199,15 +199,28 @@ def request(
     raise PubChemError(f"PUG REST request failed after {_MAX_RETRIES} attempts: {last_exc}")
 
 
+_POLL_INITIAL_SECONDS = 0.5
+_POLL_MAX_SECONDS = 5.0
+_POLL_BACKOFF_FACTOR = 2.0
+
+
 def request_search(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
     """Like request(), for PUG REST's search-type endpoints (fastsimilarity_2d,
     fastsubstructure, fastformula, ...), which can respond either
     immediately or asynchronously.
 
     A slow search returns {"Waiting": {"ListKey": "..."}} instead of a
-    result, and this polls /compound/listkey/{key}/cids/JSON every 2s until
-    the real result is ready, the same protocol PubChemPy implements (its
-    source was read directly to confirm this, not assumed from docs).
+    result, and this polls /compound/listkey/{key}/cids/JSON until the real
+    result is ready. The wait between polls starts at
+    _POLL_INITIAL_SECONDS and doubles each time up to _POLL_MAX_SECONDS,
+    rather than a flat interval: a fixed 2s wait (what PubChemPy uses, its
+    source was read directly to confirm the underlying protocol, not
+    assumed from docs) checks sooner than necessary for a job that's about
+    to finish and, symmetrically, checks far more often than necessary for
+    one that's going to take 30-60s -- a real, measured case burns 15-30
+    wasted round trips at a flat interval. Starting below 2s actually
+    catches a fast job sooner than the old fixed wait did; the doubling is
+    what keeps a slow job from paying for that on every subsequent poll.
 
     Neither the initial call nor the polling calls are cached
     (cacheable=False): a ListKey is single-use, and caching an
@@ -218,8 +231,10 @@ def request_search(path: str, params: dict[str, Any] | None = None) -> dict[str,
     resolved CIDs themselves.
     """
     body = request(path, params, method="GET", cacheable=False)
+    poll_wait = _POLL_INITIAL_SECONDS
     while "Waiting" in body and "ListKey" in body.get("Waiting", {}):
-        time.sleep(2)
+        time.sleep(poll_wait)
+        poll_wait = min(poll_wait * _POLL_BACKOFF_FACTOR, _POLL_MAX_SECONDS)
         listkey = body["Waiting"]["ListKey"]
         body = request(f"/compound/listkey/{listkey}/cids/JSON", method="GET", cacheable=False)
     return body
