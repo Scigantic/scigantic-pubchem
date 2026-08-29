@@ -28,7 +28,7 @@ $ pip install scigantic-pubchem
 
 ## Why this exists
 
-[PubChemPy](https://github.com/mcs07/PubChemPy) has been the standard way to script against PubChem in Python for years, and it covers a lot this package doesn't try to replace: 3D conformers, substances, atoms and bonds. This package is narrower, focused on identifier resolution, cross-referencing, and bioassay data, and adds a few things that matter specifically for that: resilience under PubChem's own rate limiting, a cache that keeps a notebook fast without going stale, live search over PubChem's full corpus rather than a local index, and (see BioAssay below) the tabular bioactivity operations PubChemPy's own `Assay` class never reaches at all.
+[PubChemPy](https://github.com/mcs07/PubChemPy) has been the standard way to script against PubChem in Python for years, and it covers a lot this package doesn't try to replace: 3D conformers, substances, atoms and bonds. This package is narrower, focused on identifier resolution, cross-referencing, and bioassay/gene/protein data, and adds a few things that matter specifically for that: resilience under PubChem's own rate limiting, a cache that keeps a notebook fast without going stale, live search over PubChem's full corpus rather than a local index, and (see BioAssay and Gene and protein below) whole domains PubChemPy doesn't reach at all.
 
 Measured, not asserted, on 2026-08-27:
 
@@ -100,6 +100,22 @@ pubchem.download_assay_results([1, 3], "combined.csv")                 # multipl
 pubchem.download_assay_results(1259416, "aid1259416.json", fmt="json")
 ```
 
+### Gene and protein
+
+```python
+pubchem.gene_info("EGFR")
+# GeneInfo(gene_id=1956, symbol='EGFR', name='epidermal growth factor receptor',
+#          taxonomy='Homo sapiens (human)', synonyms=['ERBB', 'HER1', ...], ...)
+
+pubchem.protein_info("P00533")
+# ProteinInfo(accession='P00533', name='Epidermal growth factor receptor', ...)
+
+pubchem.gene_assay_results("EGFR")           # every bioactivity row recorded against this gene, across every assay
+pubchem.protein_assay_results("P00533")      # same, keyed by protein accession instead
+```
+
+A third direction alongside `assay_results()`/`compound_assay_results()` above, this time keyed by the target itself. `AssayResult` already carries `target_accession`/`target_gene_id` from the bioassay tables; these give that field somewhere to resolve to, and a bioactivity table read directly by target rather than requiring `aids_for_target()` plus a per-AID fetch first. PubChemPy has nothing here at all: verified 2026-08-29 by reading its source directly, it has no `Gene`/`Protein` class and none of `genesymbol`, `geneid`, or `ProteinAccession` appear in it anywhere. `gene_info()` takes `namespace="genesymbol"` (default) or `namespace="geneid"` for PubChem's numeric Entrez ID; `protein_info()` takes a protein accession (e.g. UniProt's `P00533`).
+
 ## Thread safety
 
 Safe to call from multiple threads, a plausible real pattern: resolving a list of names via a `ThreadPoolExecutor`, say. The shared HTTP session is created once behind a lock rather than raced into existence by whichever thread gets there first. `enable_cache()`/`disable_cache()` are not synchronized against concurrent reads, the same way mutating `os.environ` isn't: call them once at the start of a script, not from multiple threads at once.
@@ -142,6 +158,10 @@ $ scigantic-pubchem compound-assay-results 2244
 $ scigantic-pubchem aids-for-compound 2244
 $ scigantic-pubchem aids-for-target EGFR
 $ scigantic-pubchem assay-download 1259416 aid1259416.csv
+$ scigantic-pubchem gene-info EGFR
+$ scigantic-pubchem protein-info P00533
+$ scigantic-pubchem gene-assay-results EGFR
+$ scigantic-pubchem protein-assay-results P00533
 ```
 
 ## License

@@ -16,11 +16,11 @@ format for that: the same data as the full record, as a table, meant for
 bulk use. This module wraps those instead.
 
 Every function here reads PUG REST's response table by column name rather
-than positional index (see _parse_table): `concise` (per-assay input) and
-`assaysummary` (per-compound input) return overlapping but not identical
-column sets (assaysummary adds "Panel Member ID"; verified live 2026-08-29
-against AID 1 and CID 2244), so a row's shape depends on which endpoint
-produced it.
+than positional index (see _tables.parse_table): `concise` (per-assay
+input) and `assaysummary` (per-compound input) return overlapping but not
+identical column sets (assaysummary adds "Panel Member ID"; verified live
+2026-08-29 against AID 1 and CID 2244), so a row's shape depends on which
+endpoint produced it.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 from . import _client
+from ._tables import join_ids, parse_table, row_to_result
 from .models import AssayResult, AssaySummary
 from .resolve import Namespace
 
@@ -40,54 +41,6 @@ if TYPE_CHECKING:
 _POST_NAMESPACES = {"smiles", "inchi"}
 _CHUNK_SIZE = 200
 _MAX_CHUNK_WORKERS = 8
-
-
-def _join_aids(aid: "int | str | Sequence[int | str]") -> str:
-    if isinstance(aid, (int, str)):
-        return str(aid)
-    return ",".join(str(a) for a in aid)
-
-
-def _parse_table(body: dict[str, Any]) -> list[dict[str, str]]:
-    table = body.get("Table", {})
-    columns: list[str] = table.get("Columns", {}).get("Column", [])
-    rows: list[dict[str, Any]] = table.get("Row", [])
-    return [dict(zip(columns, row.get("Cell", []))) for row in rows]
-
-
-def _cell_int(value: str | None) -> int | None:
-    return int(value) if value else None
-
-
-def _cell_float(value: str | None) -> float | None:
-    if not value:
-        return None
-    try:
-        return float(value)
-    except ValueError:
-        return None
-
-
-def _cell_str(value: str | None) -> str | None:
-    return value if value else None
-
-
-def _row_to_result(row: dict[str, str]) -> AssayResult:
-    return AssayResult(
-        aid=int(row["AID"]),
-        panel_member_id=_cell_str(row.get("Panel Member ID")),
-        sid=_cell_int(row.get("SID")),
-        cid=_cell_int(row.get("CID")),
-        activity_outcome=_cell_str(row.get("Activity Outcome")),
-        target_accession=_cell_str(row.get("Target Accession")),
-        target_gene_id=_cell_str(row.get("Target GeneID")),
-        activity_value_um=_cell_float(row.get("Activity Value [uM]")),
-        activity_name=_cell_str(row.get("Activity Name")),
-        assay_name=_cell_str(row.get("Assay Name")),
-        assay_type=_cell_str(row.get("Assay Type")),
-        pubmed_id=_cell_str(row.get("PubMed ID")),
-        rnai=_cell_str(row.get("RNAi")),
-    )
 
 
 def _record_to_summary(rec: dict[str, Any]) -> AssaySummary:
@@ -138,10 +91,10 @@ def assay_results(aid: "int | str | Sequence[int | str]") -> list[AssayResult]:
     live AIDs among those given returns an empty list rather than raising.
     """
     try:
-        body = _client.request(f"/assay/aid/{_join_aids(aid)}/concise/JSON")
+        body = _client.request(f"/assay/aid/{join_ids(aid)}/concise/JSON")
     except _client.CompoundNotFoundError:
         return []
-    return [_row_to_result(row) for row in _parse_table(body)]
+    return [row_to_result(row) for row in parse_table(body)]
 
 
 def assay_cids(aid: int) -> list[int]:
@@ -171,7 +124,7 @@ def _assay_results_chunk(chunk: "Sequence[str]") -> list[AssayResult]:
         body = _client.request(path)
     except _client.CompoundNotFoundError:
         return []
-    return [_row_to_result(row) for row in _parse_table(body)]
+    return [row_to_result(row) for row in parse_table(body)]
 
 
 def compound_assay_results(identifier: str | int, namespace: Namespace = "cid") -> list[AssayResult]:
@@ -194,7 +147,7 @@ def compound_assay_results(identifier: str | int, namespace: Namespace = "cid") 
         body = _client.request(path, params=params, method=method)
     except _client.CompoundNotFoundError:
         return []
-    return [_row_to_result(row) for row in _parse_table(body)]
+    return [row_to_result(row) for row in parse_table(body)]
 
 
 def compound_assay_results_many(cids: "Sequence[int | str]") -> dict[int, list[AssayResult]]:
@@ -276,5 +229,5 @@ def download_assay_results(
     """
     if fmt not in ("csv", "json"):
         raise ValueError(f"fmt must be 'csv' or 'json', got {fmt!r}")
-    path = f"/assay/aid/{_join_aids(aid)}/concise/{fmt.upper()}"
+    path = f"/assay/aid/{join_ids(aid)}/concise/{fmt.upper()}"
     return _client.stream_to_file(path, dest)

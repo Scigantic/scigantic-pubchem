@@ -18,7 +18,13 @@ from .bioassay import (
 from .bridge import bindingdb_measurements, chembl_context
 from .cache import cache_dir, disable_cache, enable_cache, is_cache_enabled
 from .cache import clear as clear_cache
-from .models import AssayResult, AssaySummary, Compound
+from .gene_protein import (
+    gene_assay_results,
+    gene_info,
+    protein_assay_results,
+    protein_info,
+)
+from .models import AssayResult, AssaySummary, Compound, GeneInfo, ProteinInfo
 from .resolve import resolve, resolve_many
 from .similarity import similar_compounds, substructure_search
 from .xrefs import chembl_id, chembl_ids_many, xrefs, xrefs_many
@@ -49,9 +55,15 @@ __all__ = [
     "aids_for_compound",
     "aids_for_target",
     "download_assay_results",
+    "gene_info",
+    "protein_info",
+    "gene_assay_results",
+    "protein_assay_results",
     "Compound",
     "AssaySummary",
     "AssayResult",
+    "GeneInfo",
+    "ProteinInfo",
     "enable_cache",
     "disable_cache",
     "is_cache_enabled",

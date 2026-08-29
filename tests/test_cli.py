@@ -46,3 +46,22 @@ def test_assay_download_command(capsys, tmp_path):
     assert exit_code == 0
     assert dest.exists()
     assert capsys.readouterr().out.strip() == str(dest)
+
+
+def test_gene_info_command(capsys):
+    exit_code = main(["gene-info", "EGFR"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert '"gene_id": 1956' in out
+
+
+def test_gene_info_command_unknown(capsys):
+    exit_code = main(["gene-info", "NOTAREALGENE123"])
+    assert exit_code == 1
+
+
+def test_protein_info_command(capsys):
+    exit_code = main(["protein-info", "P00533"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert '"accession": "P00533"' in out

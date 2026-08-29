@@ -46,15 +46,25 @@ class AssaySummary:
 @dataclass(frozen=True)
 class AssayResult:
     """One row of bioactivity data: a (SID, CID) tested in one assay (AID),
-    with its outcome. The row shape PUG REST's `concise` (per-assay) and
-    `assaysummary` (per-compound) operations both return, just keyed off
-    a different identifier; see bioassay.py."""
+    with its outcome. The row shape PUG REST's `concise` (per-assay),
+    `assaysummary` (per-compound), and the gene/protein domains' own
+    `concise` (per-gene, per-protein) operations all return, just keyed off
+    a different identifier; see bioassay.py and gene_protein.py.
+
+    Not every source populates every field: verified live 2026-08-29 that
+    the four sources return overlapping but not identical column sets
+    (e.g. gene-domain concise has no Target GeneID, since the gene is
+    already the query; protein-domain concise has no Target Accession, no
+    RNAi, for the same reason). Absent columns read as None, the same as
+    a present-but-empty cell.
+    """
 
     aid: int
     panel_member_id: str | None
     sid: int | None
     cid: int | None
     activity_outcome: str | None
+    activity_qualifier: str | None
     target_accession: str | None
     target_gene_id: str | None
     activity_value_um: float | None
@@ -63,3 +73,23 @@ class AssayResult:
     assay_type: str | None
     pubmed_id: str | None
     rnai: str | None
+
+
+@dataclass(frozen=True)
+class GeneInfo:
+    gene_id: int
+    symbol: str | None
+    name: str | None
+    taxonomy_id: int | None
+    taxonomy: str | None
+    description: str | None
+    synonyms: list[str]
+
+
+@dataclass(frozen=True)
+class ProteinInfo:
+    accession: str
+    name: str | None
+    taxonomy_id: int | None
+    taxonomy: str | None
+    synonyms: list[str]
