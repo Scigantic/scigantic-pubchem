@@ -65,3 +65,17 @@ def test_protein_info_command(capsys):
     assert exit_code == 0
     out = capsys.readouterr().out
     assert '"accession": "P00533"' in out
+
+
+def test_tox21_results_command(capsys):
+    exit_code = main(["tox21-results", "SR-ATAD5"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert '"aid": 720516' in out
+
+
+def test_tox21_matrix_command(capsys):
+    exit_code = main(["tox21-matrix", "SR-ATAD5"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert '"SR-ATAD5"' in out
