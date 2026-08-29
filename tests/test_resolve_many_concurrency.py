@@ -8,7 +8,7 @@ import sys
 import time
 from unittest import mock
 
-import scigantic_pubchem.resolve  # noqa: F401 -- populates sys.modules below
+import scigantic_pubchem.resolve  # noqa: F401 (populates sys.modules below)
 
 # Not "from scigantic_pubchem import resolve", and not
 # "import scigantic_pubchem.resolve as _resolve_module" either:

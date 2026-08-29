@@ -21,7 +21,7 @@ from scigantic_pubchem import _client
 
 @pytest.fixture(autouse=True)
 def _no_rate_limit_wait(monkeypatch):
-    """Every test here mocks time.sleep to skip real waiting -- but
+    """Every test here mocks time.sleep to skip real waiting, but
     _client.request() also calls the shared _RateLimiter.acquire() before
     each attempt, which itself calls time.sleep() while waiting for a
     token to refill. With time.sleep mocked to a no-op and time.monotonic
