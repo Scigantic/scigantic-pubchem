@@ -25,7 +25,7 @@ from .gene_protein import (
 from .resolve import resolve
 from .similarity import similar_compounds, substructure_search
 from .tox21 import tox21_matrix, tox21_results
-from .xrefs import chembl_id, xrefs
+from .xrefs import chembl_id, pdb_structures, xrefs
 
 
 def _cmd_resolve(args: argparse.Namespace) -> int:
@@ -43,6 +43,12 @@ def _cmd_chembl_id(args: argparse.Namespace) -> int:
         print(f"no ChEMBL cross-reference for {args.identifier!r}", file=sys.stderr)
         return 1
     print(result)
+    return 0
+
+
+def _cmd_pdb_structures(args: argparse.Namespace) -> int:
+    for mmdb_id in pdb_structures(args.identifier, namespace=args.namespace):
+        print(mmdb_id)
     return 0
 
 
@@ -165,6 +171,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     chembl_parser.add_argument("identifier")
     chembl_parser.add_argument("--namespace", default="cid", choices=["name", "cid", "smiles", "inchikey", "inchi", "formula"])
     chembl_parser.set_defaults(func=_cmd_chembl_id)
+
+    pdb_parser = subparsers.add_parser("pdb-structures", help="MMDB IDs of structures with this compound bound as a ligand")
+    pdb_parser.add_argument("identifier")
+    pdb_parser.add_argument("--namespace", default="cid", choices=["name", "cid", "smiles", "inchikey", "inchi", "formula"])
+    pdb_parser.set_defaults(func=_cmd_pdb_structures)
 
     xrefs_parser = subparsers.add_parser("xrefs", help="raw cross-references PubChem has on file")
     xrefs_parser.add_argument("identifier")
