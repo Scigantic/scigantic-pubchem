@@ -8,6 +8,9 @@ database identifiers PubChem's depositors have registered. This means a
 ChEMBL cross-reference does not need a precomputed bridge table the way
 scigantic-bindingdb's does for BindingDB. It can be read live, and it is
 never stale, since it reflects whatever PubChem currently has on file.
+
+A different xrefs type, MMDBID, gives the same live-lookup treatment to
+structural data: see pdb_structures() below.
 """
 
 from __future__ import annotations
@@ -47,6 +50,39 @@ def xrefs(identifier: str | int, xref_type: str = "RegistryID", namespace: str =
     return list(info[0].get(xref_type, []))
 
 
+def pdb_structures(identifier: str | int, namespace: str = "cid") -> list[int]:
+    """MMDB IDs of deposited structures PubChem has on file with this
+    compound bound as a ligand: NCBI's Molecular Modeling Database, its
+    own mirror of PDB structure data with its own numeric ID space.
+
+    Not the 4-character PDB ID itself. Verified live 2026-08-29 against
+    PUG REST's own documented xrefs types: MMDBID is valid, "PDBID" is
+    not (400 PUGREST.BadRequest, "Invalid xrefs type") -- PUG REST has no
+    xrefs type that returns a PDB ID directly, only this MMDB proxy, and
+    mapping an MMDB ID to its PDB ID needs a separate NCBI service PUG
+    REST doesn't expose, out of scope for a package that only ever calls
+    pubchem.ncbi.nlm.nih.gov/rest/pug. Each ID here is still a real,
+    directly usable pointer to a deposited structure, viewable at
+    https://www.ncbi.nlm.nih.gov/Structure/mmdb/mmdbsrv.cgi?uid={id}
+    (confirmed live: CID 5291/imatinib resolves to 27 structures, CID
+    2244/aspirin to 8; a compound never crystallized as a ligand, like
+    CID 1/methane, returns an empty list rather than raising).
+    """
+    return [int(ref) for ref in xrefs(identifier, xref_type="MMDBID", namespace=namespace)]
+
+
+def pdb_structures_many(cids: "Sequence[int | str]") -> dict[int, list[int]]:
+    """Batched pdb_structures() for CIDs; see xrefs_many() for the
+    round-trip savings. Every requested CID gets an entry, an empty list
+    if it has no structures on file, the same way chembl_ids_many() gives
+    every CID an entry regardless of xrefs_many()'s own chunk-dependent
+    presence (see its docstring) -- this loops over the input CIDs
+    explicitly rather than trusting which keys came back.
+    """
+    all_refs = xrefs_many(cids, xref_type="MMDBID")
+    return {int(cid): [int(ref) for ref in all_refs.get(int(cid), [])] for cid in cids}
+
+
 def chembl_id(identifier: str | int, namespace: str = "cid") -> str | None:
     """The ChEMBL ID PubChem has on file for this compound, if any.
 
@@ -80,8 +116,18 @@ def xrefs_many(cids: "Sequence[int | str]", xref_type: str = "RegistryID") -> di
     that PUG REST's xrefs endpoint accepts a comma-separated CID list the
     same way the property endpoint resolve_many() uses does (confirmed at
     200 CIDs in one request, not just a small batch), so this chunks and
-    parallelizes the same way. A CID PubChem has no xrefs of this type for
-    is simply absent from the returned dict, not an empty-list entry.
+    parallelizes the same way.
+
+    Whether a CID with zero xrefs of this type appears in the result at
+    all depends on its chunk-mates, not just on it: verified live
+    2026-08-29 that a chunk where every queried CID has zero matches gets
+    a genuine 404 (caught by _xrefs_chunk, contributing nothing to the
+    result -- those CIDs are absent), but a chunk with at least one match
+    returns 200 with an explicit empty-list entry for every CID in that
+    chunk that had none. A caller that needs "was this CID even asked
+    about" for a CID that might land in either kind of chunk should treat
+    a missing key and an empty-list value the same way, not rely on one
+    implying the other.
 
     Unlike xrefs(), this is CID-only: PUG REST does not support
     comma-separated batching for the name/smiles/inchikey namespaces
@@ -106,8 +152,11 @@ def chembl_ids_many(cids: "Sequence[int | str]") -> dict[int, str | None]:
 
     Batched version of chembl_id(); see xrefs_many() for the round-trip
     savings. A CID with no ChEMBL id on file maps to None, same as
-    chembl_id()'s return for a single miss, rather than being absent from
-    the result: every requested CID gets an entry either way.
+    chembl_id()'s return for a single miss. Unlike xrefs_many() itself
+    (whose per-CID presence depends on its chunk-mates; see its
+    docstring), every requested CID gets an entry here regardless, since
+    this loops over the input CIDs explicitly rather than trusting which
+    keys xrefs_many() happened to return.
     """
     all_refs = xrefs_many(cids, xref_type="RegistryID")
     result: dict[int, str | None] = {}

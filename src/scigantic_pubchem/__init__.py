@@ -28,7 +28,14 @@ from .models import AssayResult, AssaySummary, Compound, GeneInfo, ProteinInfo
 from .resolve import resolve, resolve_many
 from .similarity import similar_compounds, substructure_search
 from .tox21 import TOX21_ENDPOINTS, tox21_matrix, tox21_results
-from .xrefs import chembl_id, chembl_ids_many, xrefs, xrefs_many
+from .xrefs import (
+    chembl_id,
+    chembl_ids_many,
+    pdb_structures,
+    pdb_structures_many,
+    xrefs,
+    xrefs_many,
+)
 
 try:
     __version__ = _version("scigantic-pubchem")
@@ -45,6 +52,8 @@ __all__ = [
     "xrefs_many",
     "chembl_id",
     "chembl_ids_many",
+    "pdb_structures",
+    "pdb_structures_many",
     "chembl_context",
     "bindingdb_measurements",
     "assay_summary",

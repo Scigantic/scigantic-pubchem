@@ -58,9 +58,13 @@ pubchem.chembl_id(2244)   # 'CHEMBL25', read live from PubChem's own xrefs, not 
 
 pubchem.xrefs_many([2244, 3672, 2519])       # {2244: [...], 3672: [...], 2519: [...]}, chunked and parallelized
 pubchem.chembl_ids_many([2244, 3672, 2519])  # {2244: 'CHEMBL25', 3672: 'CHEMBL521', 2519: 'CHEMBL113'}
+
+pubchem.pdb_structures(5291)   # [110242, 131625, ...], 27 deposited structures with imatinib bound as a ligand
 ```
 
 PubChem's own `xrefs/RegistryID` endpoint already carries the ChEMBL ID for a compound when one exists (verified live against aspirin, CID 2244 resolves to CHEMBL25). PubChemPy can reach the same endpoint through its low-level `request()`/`get()` functions; this package wraps it as a named, documented function. The batch versions accept a comma-separated CID list in one PUG REST request, the same way `resolve_many()` does (see below).
+
+`pdb_structures()` reads a different xrefs type, `MMDBID`: NCBI's Molecular Modeling Database, its own mirror of PDB structure data. Not the 4-character PDB ID itself -- verified live 2026-08-29 that PUG REST has no xrefs type that returns one directly (`MMDBID` is valid, `PDBID` 400s), and mapping an MMDB ID to its PDB ID needs a separate NCBI service outside PUG REST, out of scope for a package that only ever calls `pubchem.ncbi.nlm.nih.gov/rest/pug`. Each ID is still a real, usable pointer to a deposited structure, viewable at `ncbi.nlm.nih.gov/Structure/mmdb/mmdbsrv.cgi?uid={id}`.
 
 ### Similarity and substructure search
 
@@ -161,6 +165,7 @@ PUG REST accepts a comma-separated CID list in a single request (verified live);
 ```console
 $ scigantic-pubchem resolve aspirin
 $ scigantic-pubchem chembl-id 2244
+$ scigantic-pubchem pdb-structures 5291
 $ scigantic-pubchem xrefs 2244 --type RegistryID
 $ scigantic-pubchem similar "CC(=O)OC1=CC=CC=C1C(=O)O" --threshold 95
 $ scigantic-pubchem substructure c1ccccc1

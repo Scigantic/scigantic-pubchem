@@ -20,6 +20,13 @@ def test_resolve_command_unknown(capsys):
     assert exit_code == 1
 
 
+def test_pdb_structures_command(capsys):
+    exit_code = main(["pdb-structures", "5291"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert len(out.strip().splitlines()) > 10
+
+
 def test_assay_summary_command(capsys):
     exit_code = main(["assay-summary", "1"])
     assert exit_code == 0
