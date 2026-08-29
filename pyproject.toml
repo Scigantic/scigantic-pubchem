@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scigantic-pubchem"
-version = "0.3.4"
-description = "Query PubChem live via PUG REST, with rate-limit-aware retry, expiring cache, and live similarity/substructure/cross-reference search PubChemPy doesn't have."
+version = "0.5.0"
+description = "Query PubChem live via PUG REST, with rate-limit-aware retry, expiring cache, live similarity/substructure/cross-reference search, and bioassay/gene/protein data (with a streaming downloader) PubChemPy doesn't have."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT-0" }
 authors = [{ name = "Scigantic" }]
-keywords = ["pubchem", "cheminformatics", "pug-rest", "drug-discovery", "identifier-resolution"]
+keywords = ["pubchem", "cheminformatics", "pug-rest", "drug-discovery", "identifier-resolution", "bioassay", "gene", "protein"]
 classifiers = [
   "License :: OSI Approved :: MIT No Attribution License (MIT-0)",
   "Programming Language :: Python :: 3",

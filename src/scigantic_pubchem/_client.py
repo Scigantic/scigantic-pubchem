@@ -25,10 +25,13 @@ fact.
 
 from __future__ import annotations
 
+import os
 import re
 import threading
 import time
+import uuid
 import warnings
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -126,6 +129,57 @@ def _get_session() -> requests.Session:
     return _session
 
 
+def _send_with_retry(method: str, url: str, params: dict[str, Any] | None, stream: bool = False) -> requests.Response:
+    """The retry/backoff loop request() and stream_to_file() both need:
+    paces every attempt through the token bucket, retries 429/5xx with
+    backoff informed by X-Throttling-Control, and raises
+    CompoundNotFoundError/PubChemError the same way for either caller.
+
+    Returns the still-open Response on success. stream=True (used by
+    stream_to_file(), which writes a CSV that can run to tens of MB for a
+    large assay directly to disk) defers reading the body so the caller
+    can iter_content() it rather than this function buffering the whole
+    thing first just to hand it back.
+    """
+    session = _get_session()
+    last_exc: Exception | None = None
+
+    for attempt in range(_MAX_RETRIES):
+        _limiter.acquire()
+        try:
+            if method == "POST":
+                response = session.post(url, data=params, timeout=30, stream=stream)
+            else:
+                response = session.get(url, params=params, timeout=30, stream=stream)
+        except requests.RequestException as exc:
+            last_exc = exc
+            time.sleep(2 ** attempt)
+            continue
+
+        status = _parse_throttle_header(response.headers.get("X-Throttling-Control"))
+        if response.status_code in _RETRY_STATUS_CODES and attempt < _MAX_RETRIES - 1:
+            wait = max(_BACKOFF_SECONDS[status], 2 ** attempt)
+            warnings.warn(
+                f"PUG REST returned {response.status_code} (throttle status {status}); "
+                f"retrying in {wait:.1f}s (attempt {attempt + 1}/{_MAX_RETRIES})",
+                stacklevel=2,
+            )
+            time.sleep(wait)
+            continue
+        if response.status_code == 404:
+            raise CompoundNotFoundError(f"no match for {url}")
+        if response.status_code >= 400:
+            raise PubChemError(f"PUG REST {response.status_code} for {url}: {response.text[:500]}")
+
+        if status != "Green":
+            # Proactive backoff even on success, so a run of calls doesn't
+            # walk itself into a 429 a few requests later.
+            time.sleep(_BACKOFF_SECONDS[status])
+        return response
+
+    raise PubChemError(f"PUG REST request failed after {_MAX_RETRIES} attempts: {last_exc}")
+
+
 def request(
     path: str,
     params: dict[str, Any] | None = None,
@@ -156,47 +210,46 @@ def request(
         if cached is not None:
             return cached
 
-    session = _get_session()
     url = f"{_BASE}{path}"
-    last_exc: Exception | None = None
+    response = _send_with_retry(method, url, params)
+    body: dict[str, Any] = response.json()
+    if method == "GET" and cacheable:
+        cache.put(path, params, body)
+    return body
 
-    for attempt in range(_MAX_RETRIES):
-        _limiter.acquire()
-        try:
-            if method == "POST":
-                response = session.post(url, data=params, timeout=30)
-            else:
-                response = session.get(url, params=params, timeout=30)
-        except requests.RequestException as exc:
-            last_exc = exc
-            time.sleep(2 ** attempt)
-            continue
 
-        status = _parse_throttle_header(response.headers.get("X-Throttling-Control"))
-        if response.status_code in _RETRY_STATUS_CODES and attempt < _MAX_RETRIES - 1:
-            wait = max(_BACKOFF_SECONDS[status], 2 ** attempt)
-            warnings.warn(
-                f"PUG REST returned {response.status_code} (throttle status {status}); "
-                f"retrying in {wait:.1f}s (attempt {attempt + 1}/{_MAX_RETRIES})",
-                stacklevel=2,
-            )
-            time.sleep(wait)
-            continue
-        if response.status_code == 404:
-            raise CompoundNotFoundError(f"no match for {url}")
-        if response.status_code >= 400:
-            raise PubChemError(f"PUG REST {response.status_code} for {url}: {response.text[:500]}")
+def stream_to_file(path: str, dest: Path | str, params: dict[str, Any] | None = None) -> Path:
+    """GET a PUG REST path and write the response body straight to dest,
+    chunk by chunk, rather than buffering it in memory as request() does.
 
-        if status != "Green":
-            # Proactive backoff even on success, so a run of calls doesn't
-            # walk itself into a 429 a few requests later.
-            time.sleep(_BACKOFF_SECONDS[status])
-        body: dict[str, Any] = response.json()
-        if method == "GET" and cacheable:
-            cache.put(path, params, body)
-        return body
+    For bioassay.download_assay_results(): a large screen's `concise` CSV
+    can run to tens of MB (measured: a 69,000-row qHTS assay's concise CSV
+    is ~9.5MB), and every other function in this package holds its PUG
+    REST response in memory only as long as it takes to build the typed
+    records this package returns. A download is meant to end up as a file
+    on disk regardless, so there's nothing to gain by holding the whole
+    body as one Python bytes object in between.
 
-    raise PubChemError(f"PUG REST request failed after {_MAX_RETRIES} attempts: {last_exc}")
+    Not cached (see request()'s cacheable=False for the same reasoning
+    applied to search polling): the destination file already is the cached
+    artifact.
+    """
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    url = f"{_BASE}{path}"
+    response = _send_with_retry("GET", url, params, stream=True)
+    tmp = dest.with_suffix(f"{dest.suffix}.{uuid.uuid4().hex}.part")
+    try:
+        with tmp.open("wb") as f:
+            for chunk in response.iter_content(chunk_size=1 << 16):
+                if chunk:
+                    f.write(chunk)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    else:
+        os.replace(tmp, dest)
+    return dest
 
 
 _POLL_INITIAL_SECONDS = 0.5

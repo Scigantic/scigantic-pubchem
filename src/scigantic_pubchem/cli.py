@@ -8,6 +8,20 @@ import json
 import sys
 from typing import Sequence, cast
 
+from .bioassay import (
+    aids_for_compound,
+    aids_for_target,
+    assay_results,
+    assay_summary,
+    compound_assay_results,
+    download_assay_results,
+)
+from .gene_protein import (
+    gene_assay_results,
+    gene_info,
+    protein_assay_results,
+    protein_info,
+)
 from .resolve import resolve
 from .similarity import similar_compounds, substructure_search
 from .xrefs import chembl_id, xrefs
@@ -57,6 +71,75 @@ def _cmd_substructure(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_assay_summary(args: argparse.Namespace) -> int:
+    summary = assay_summary(args.aid)
+    if summary is None:
+        print(f"no assay found for AID {args.aid}", file=sys.stderr)
+        return 1
+    print(json.dumps(dataclasses.asdict(summary), indent=2))
+    return 0
+
+
+def _cmd_assay_results(args: argparse.Namespace) -> int:
+    for result in assay_results(args.aid):
+        print(json.dumps(dataclasses.asdict(result)))
+    return 0
+
+
+def _cmd_compound_assay_results(args: argparse.Namespace) -> int:
+    for result in compound_assay_results(args.identifier, namespace=args.namespace):
+        print(json.dumps(dataclasses.asdict(result)))
+    return 0
+
+
+def _cmd_aids_for_compound(args: argparse.Namespace) -> int:
+    for aid in aids_for_compound(args.identifier, namespace=args.namespace):
+        print(aid)
+    return 0
+
+
+def _cmd_aids_for_target(args: argparse.Namespace) -> int:
+    for aid in aids_for_target(args.gene_symbol):
+        print(aid)
+    return 0
+
+
+def _cmd_assay_download(args: argparse.Namespace) -> int:
+    dest = download_assay_results(args.aid, args.dest, fmt=args.format)
+    print(dest)
+    return 0
+
+
+def _cmd_gene_info(args: argparse.Namespace) -> int:
+    info = gene_info(args.identifier, namespace=args.namespace)
+    if info is None:
+        print(f"no gene found for {args.identifier!r}", file=sys.stderr)
+        return 1
+    print(json.dumps(dataclasses.asdict(info), indent=2))
+    return 0
+
+
+def _cmd_protein_info(args: argparse.Namespace) -> int:
+    info = protein_info(args.accession)
+    if info is None:
+        print(f"no protein found for {args.accession!r}", file=sys.stderr)
+        return 1
+    print(json.dumps(dataclasses.asdict(info), indent=2))
+    return 0
+
+
+def _cmd_gene_assay_results(args: argparse.Namespace) -> int:
+    for result in gene_assay_results(args.identifier, namespace=args.namespace):
+        print(json.dumps(dataclasses.asdict(result)))
+    return 0
+
+
+def _cmd_protein_assay_results(args: argparse.Namespace) -> int:
+    for result in protein_assay_results(args.accession):
+        print(json.dumps(dataclasses.asdict(result)))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scigantic-pubchem")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -88,6 +171,58 @@ def main(argv: Sequence[str] | None = None) -> int:
     substructure_parser.add_argument("--query-type", default="smiles", choices=["smiles", "smarts"], dest="query_type")
     substructure_parser.add_argument("--max-records", type=int, default=100, dest="max_records")
     substructure_parser.set_defaults(func=_cmd_substructure)
+
+    assay_summary_parser = subparsers.add_parser("assay-summary", help="overview and outcome counts for one assay")
+    assay_summary_parser.add_argument("aid", type=int)
+    assay_summary_parser.set_defaults(func=_cmd_assay_summary)
+
+    assay_results_parser = subparsers.add_parser("assay-results", help="bioactivity rows for one or more assays")
+    assay_results_parser.add_argument("aid", nargs="+", help="one or more AIDs")
+    assay_results_parser.set_defaults(func=_cmd_assay_results)
+
+    compound_results_parser = subparsers.add_parser(
+        "compound-assay-results", help="every bioactivity row recorded for one compound"
+    )
+    compound_results_parser.add_argument("identifier")
+    compound_results_parser.add_argument("--namespace", default="cid", choices=["name", "cid", "smiles", "inchikey", "inchi", "formula"])
+    compound_results_parser.set_defaults(func=_cmd_compound_assay_results)
+
+    aids_compound_parser = subparsers.add_parser("aids-for-compound", help="AIDs of every assay that tested a compound")
+    aids_compound_parser.add_argument("identifier")
+    aids_compound_parser.add_argument("--namespace", default="cid", choices=["name", "cid", "smiles", "inchikey", "inchi", "formula"])
+    aids_compound_parser.set_defaults(func=_cmd_aids_for_compound)
+
+    aids_target_parser = subparsers.add_parser("aids-for-target", help="AIDs of every assay run against a gene target")
+    aids_target_parser.add_argument("gene_symbol")
+    aids_target_parser.set_defaults(func=_cmd_aids_for_target)
+
+    assay_download_parser = subparsers.add_parser("assay-download", help="stream an assay's bioactivity table to a file")
+    assay_download_parser.add_argument("aid", nargs="+", help="one or more AIDs")
+    assay_download_parser.add_argument("dest")
+    assay_download_parser.add_argument("--format", default="csv", choices=["csv", "json"])
+    assay_download_parser.set_defaults(func=_cmd_assay_download)
+
+    gene_info_parser = subparsers.add_parser("gene-info", help="overview for one gene")
+    gene_info_parser.add_argument("identifier")
+    gene_info_parser.add_argument("--namespace", default="genesymbol", choices=["genesymbol", "geneid"])
+    gene_info_parser.set_defaults(func=_cmd_gene_info)
+
+    protein_info_parser = subparsers.add_parser("protein-info", help="overview for one protein")
+    protein_info_parser.add_argument("accession")
+    protein_info_parser.set_defaults(func=_cmd_protein_info)
+
+    gene_results_parser = subparsers.add_parser(
+        "gene-assay-results", help="every bioactivity row recorded against a gene target"
+    )
+    gene_results_parser.add_argument("identifier")
+    gene_results_parser.add_argument("--namespace", default="genesymbol", choices=["genesymbol", "geneid"])
+    gene_results_parser.set_defaults(func=_cmd_gene_assay_results)
+
+    protein_results_parser = subparsers.add_parser(
+        "protein-assay-results", help="every bioactivity row recorded against a protein target"
+    )
+    protein_results_parser.add_argument("accession")
+    protein_results_parser.set_defaults(func=_cmd_protein_assay_results)
 
     args = parser.parse_args(argv)
     return cast(int, args.func(args))
