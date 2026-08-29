@@ -28,7 +28,7 @@ $ pip install scigantic-pubchem
 
 ## Why this exists
 
-[PubChemPy](https://github.com/mcs07/PubChemPy) has been the standard way to script against PubChem in Python for years, and it covers a lot this package doesn't try to replace: 3D conformers, assays, substances, atoms and bonds. This package is narrower, focused on identifier resolution and cross-referencing, and adds a few things that matter specifically for that: resilience under PubChem's own rate limiting, a cache that keeps a notebook fast without going stale, and live search over PubChem's full corpus rather than a local index.
+[PubChemPy](https://github.com/mcs07/PubChemPy) has been the standard way to script against PubChem in Python for years, and it covers a lot this package doesn't try to replace: 3D conformers, substances, atoms and bonds. This package is narrower, focused on identifier resolution, cross-referencing, and bioassay data, and adds a few things that matter specifically for that: resilience under PubChem's own rate limiting, a cache that keeps a notebook fast without going stale, live search over PubChem's full corpus rather than a local index, and (see BioAssay below) the tabular bioactivity operations PubChemPy's own `Assay` class never reaches at all.
 
 Measured, not asserted, on 2026-08-27:
 
@@ -76,6 +76,30 @@ pubchem.substructure_search("[#6]1[#6][#6][#6][#6][#6]1", query_type="smarts")  
 
 An expensive search can respond asynchronously, with PubChem handing back a job to poll rather than blocking the connection; handled transparently, using the same underlying protocol PubChemPy implements. Polling starts at 0.5s and doubles up to a 5s cap rather than a flat interval, so a fast job gets checked sooner and a slow one (a real, measured case took 30-60s) stops paying for a tight interval it never needed. Every live query tried during development resolved synchronously, even a maximally broad single-carbon substructure search, so the polling loop itself is verified with a scripted mock response sequence rather than left checked only against documentation.
 
+### BioAssay
+
+```python
+summary = pubchem.assay_summary(1)
+# AssaySummary(aid=1, name='NCI human tumor cell line growth inhibition assay...',
+#              cid_active=3370, cid_inactive=52324, cid_total=55532, ...)
+
+results = pubchem.assay_results(1)          # every (SID, CID, outcome) row PubChem has for this assay
+pubchem.compound_assay_results(2244)        # every assay result recorded for aspirin, the reverse direction
+
+pubchem.aids_for_compound(2244)             # every AID that tested aspirin
+pubchem.aids_for_target("EGFR")             # every AID run against a gene target
+```
+
+PubChemPy's `Assay`/`get_assays()` only reach PUG REST's `description` operation, the raw, deeply nested record built to round-trip a depositor's original submission (protocol text, full result-column schema, revision history), not to be read programmatically. Verified 2026-08-29 by reading PubChemPy's source directly: the strings `concise`, `assaysummary`, and `summary` never appear in it, under the assay domain or otherwise, so it has no path to the tabular bioactivity data (AID/SID/CID/Activity Outcome/...) most callers actually want. This package wraps those operations instead. `assay_summary()` gives the flat overview (name, description, target, active/inactive/total counts) `description` buries in that nested record; `assay_results()`/`compound_assay_results()` give the row-level bioactivity table, in both directions, using PUG REST's `concise` and `assaysummary` operations, which are PubChem's own purpose-built compact formats for exactly this.
+
+A large assay's result table does not fit comfortably in memory as a Python list. Verified 2026-08-29: AID 3, a DTP/NCI screen from the 1990s, is 54,003 rows and about 9MB as `concise` CSV; a modern qHTS screen can run to hundreds of thousands of rows. `download_assay_results()` streams a `concise` table straight to a file, chunk by chunk, rather than buffering the whole response in memory first the way `assay_results()` does:
+
+```python
+pubchem.download_assay_results(1259416, "aid1259416.csv")             # CSV, PubChem's own bulk format for this
+pubchem.download_assay_results([1, 3], "combined.csv")                 # multiple AIDs in one request, one file
+pubchem.download_assay_results(1259416, "aid1259416.json", fmt="json")
+```
+
 ## Thread safety
 
 Safe to call from multiple threads, a plausible real pattern: resolving a list of names via a `ThreadPoolExecutor`, say. The shared HTTP session is created once behind a lock rather than raced into existence by whichever thread gets there first. `enable_cache()`/`disable_cache()` are not synchronized against concurrent reads, the same way mutating `os.environ` isn't: call them once at the start of a script, not from multiple threads at once.
@@ -112,6 +136,12 @@ $ scigantic-pubchem chembl-id 2244
 $ scigantic-pubchem xrefs 2244 --type RegistryID
 $ scigantic-pubchem similar "CC(=O)OC1=CC=CC=C1C(=O)O" --threshold 95
 $ scigantic-pubchem substructure c1ccccc1
+$ scigantic-pubchem assay-summary 1
+$ scigantic-pubchem assay-results 1 3
+$ scigantic-pubchem compound-assay-results 2244
+$ scigantic-pubchem aids-for-compound 2244
+$ scigantic-pubchem aids-for-target EGFR
+$ scigantic-pubchem assay-download 1259416 aid1259416.csv
 ```
 
 ## License
