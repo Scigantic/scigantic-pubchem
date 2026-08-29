@@ -116,6 +116,18 @@ pubchem.protein_assay_results("P00533")      # same, keyed by protein accession 
 
 A third direction alongside `assay_results()`/`compound_assay_results()` above, this time keyed by the target itself. `AssayResult` already carries `target_accession`/`target_gene_id` from the bioassay tables; these give that field somewhere to resolve to, and a bioactivity table read directly by target rather than requiring `aids_for_target()` plus a per-AID fetch first. PubChemPy has nothing here at all: verified 2026-08-29 by reading its source directly, it has no `Gene`/`Protein` class and none of `genesymbol`, `geneid`, or `ProteinAccession` appear in it anywhere. `gene_info()` takes `namespace="genesymbol"` (default) or `namespace="geneid"` for PubChem's numeric Entrez ID; `protein_info()` takes a protein accession (e.g. UniProt's `P00533`).
 
+### Tox21
+
+```python
+pubchem.tox21_results(["NR-AhR"])          # raw bioactivity rows for one endpoint
+pubchem.tox21_results()                    # all 12 endpoints, one batched request
+
+matrix = pubchem.tox21_matrix()
+# {2244: {'NR-AR': 0, 'NR-AR-LBD': 0, 'NR-AhR': 0, ..., 'SR-p53': 0}, ...}
+```
+
+The 12 nuclear-receptor and stress-response qHTS assays from the Tox21 Data Challenge (NR-AR, NR-AR-LBD, NR-AhR, NR-Aromatase, NR-ER, NR-ER-LBD, NR-PPAR-gamma, SR-ARE, SR-ATAD5, SR-HSE, SR-MMP, SR-p53) -- the same 12 columns MoleculeNet/DeepChem's `tox21.csv` exposes. `tox21_results()` is a thin wrapper over `assay_results()` with the 12 endpoint names mapped to their PubChem AIDs (each AID verified live against its own PubChem `summary` name and cross-checked against Huang et al. 2016, Table 1). `tox21_matrix()` does the assembly step raw PubChem access doesn't: one row per CID, one column per endpoint, consolidating a compound's replicate rows into a single 1 (active) / 0 (inactive) / `None` (untested or unresolved) label -- Tox21 is a canonical multi-task benchmark with real missing labels, and this is a live reconstruction of the panel, not a byte-for-bit copy of NCATS's original challenge SDF (which applied its own compound-level SMILES canonicalization and train/test split).
+
 ## Thread safety
 
 Safe to call from multiple threads, a plausible real pattern: resolving a list of names via a `ThreadPoolExecutor`, say. The shared HTTP session is created once behind a lock rather than raced into existence by whichever thread gets there first. `enable_cache()`/`disable_cache()` are not synchronized against concurrent reads, the same way mutating `os.environ` isn't: call them once at the start of a script, not from multiple threads at once.
@@ -162,6 +174,8 @@ $ scigantic-pubchem gene-info EGFR
 $ scigantic-pubchem protein-info P00533
 $ scigantic-pubchem gene-assay-results EGFR
 $ scigantic-pubchem protein-assay-results P00533
+$ scigantic-pubchem tox21-results NR-AhR
+$ scigantic-pubchem tox21-matrix
 ```
 
 ## License

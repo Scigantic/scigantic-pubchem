@@ -24,6 +24,7 @@ from .gene_protein import (
 )
 from .resolve import resolve
 from .similarity import similar_compounds, substructure_search
+from .tox21 import tox21_matrix, tox21_results
 from .xrefs import chembl_id, xrefs
 
 
@@ -140,6 +141,17 @@ def _cmd_protein_assay_results(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_tox21_results(args: argparse.Namespace) -> int:
+    for result in tox21_results(args.endpoint or None):
+        print(json.dumps(dataclasses.asdict(result)))
+    return 0
+
+
+def _cmd_tox21_matrix(args: argparse.Namespace) -> int:
+    print(json.dumps(tox21_matrix(args.endpoint or None), indent=2))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scigantic-pubchem")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -223,6 +235,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     protein_results_parser.add_argument("accession")
     protein_results_parser.set_defaults(func=_cmd_protein_assay_results)
+
+    tox21_results_parser = subparsers.add_parser(
+        "tox21-results", help="raw bioactivity rows for the Tox21 Data Challenge panel"
+    )
+    tox21_results_parser.add_argument("endpoint", nargs="*", help="Tox21 endpoint(s), e.g. NR-AhR SR-p53 (default: all 12)")
+    tox21_results_parser.set_defaults(func=_cmd_tox21_results)
+
+    tox21_matrix_parser = subparsers.add_parser(
+        "tox21-matrix", help="wide CID x endpoint label matrix for the Tox21 Data Challenge panel"
+    )
+    tox21_matrix_parser.add_argument("endpoint", nargs="*", help="Tox21 endpoint(s) (default: all 12)")
+    tox21_matrix_parser.set_defaults(func=_cmd_tox21_matrix)
 
     args = parser.parse_args(argv)
     return cast(int, args.func(args))
