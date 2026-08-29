@@ -29,19 +29,19 @@ def _get_connection() -> "duckdb.DuckDBPyConnection":
 
     The old behavior opened a brand new duckdb.connect() on every call,
     re-running INSTALL/LOAD httpfs and re-creating the S3 secret every
-    time -- and, the real cost, discarding whatever DuckDB itself caches
+    time. The real cost was discarding whatever DuckDB itself caches
     about a remote parquet file (footer, row group metadata) along with
     it, so looping this over many identifiers re-paid that S3 metadata
     fetch on every single call.
 
     A single DuckDB Connection is not safe for concurrent execute() calls
-    from multiple threads -- verified directly, not assumed: two threads
+    from multiple threads. Verified directly, not assumed: two threads
     racing execute()/fetchone() on the same connection silently returned
     None for some of them instead of raising, corrupted results rather
     than a clean failure. cursor() is DuckDB's own way to get an
     independent, thread-safe handle that still shares the parent's loaded
-    extensions, registered secrets, and caching -- confirmed live against
-    the real S3 mirror, concurrently, from multiple threads. So the base
+    extensions, registered secrets, and caching (confirmed live against
+    the real S3 mirror, concurrently, from multiple threads). So the base
     connection's setup and whatever it caches pays its cost once per
     process, while every call here still gets its own safe cursor, the
     same safety a caller looping this from a thread pool (the way

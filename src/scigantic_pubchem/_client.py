@@ -217,7 +217,7 @@ def request_search(path: str, params: dict[str, Any] | None = None) -> dict[str,
     source was read directly to confirm the underlying protocol, not
     assumed from docs) checks sooner than necessary for a job that's about
     to finish and, symmetrically, checks far more often than necessary for
-    one that's going to take 30-60s -- a real, measured case burns 15-30
+    one that's going to take 30-60s. A real, measured case burns 15-30
     wasted round trips at a flat interval. Starting below 2s actually
     catches a fast job sooner than the old fixed wait did; the doubling is
     what keeps a slow job from paying for that on every subsequent poll.

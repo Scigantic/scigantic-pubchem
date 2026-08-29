@@ -107,7 +107,7 @@ def chembl_ids_many(cids: "Sequence[int | str]") -> dict[int, str | None]:
     Batched version of chembl_id(); see xrefs_many() for the round-trip
     savings. A CID with no ChEMBL id on file maps to None, same as
     chembl_id()'s return for a single miss, rather than being absent from
-    the result -- every requested CID gets an entry either way.
+    the result: every requested CID gets an entry either way.
     """
     all_refs = xrefs_many(cids, xref_type="RegistryID")
     result: dict[int, str | None] = {}

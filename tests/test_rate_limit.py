@@ -1,9 +1,9 @@
 """_RateLimiter's token bucket: pure logic, no real network and no real
 waiting. time.monotonic and time.sleep are both mocked with a shared fake
 clock, since the bucket's correctness depends on real elapsed time between
-acquire() calls -- something test_async_search.py's mocked-sleep-only
-approach didn't need, because that test never depends on how much time a
-mocked sleep represents, only on how many times it's called.
+acquire() calls. test_async_search.py's mocked-sleep-only approach didn't
+need that: that test never depends on how much time a mocked sleep
+represents, only on how many times it's called.
 """
 
 import pytest
