@@ -130,8 +130,11 @@ def test_download_assay_results_writes_csv(tmp_path):
     with dest.open(newline="") as f:
         rows = list(csv.DictReader(f))
     assert len(rows) > 50000  # verified live 2026-08-29: 54,003 rows
-    assert rows[0]["AID"] == "3"
-    assert rows[0]["CID"] == "11122"
+    # Row order isn't guaranteed to be stable across requests (verified live
+    # 2026-08-29: CID 11122 was the first row in one request and buried
+    # elsewhere in another), so check membership, not position.
+    assert all(row["AID"] == "3" for row in rows)
+    assert any(row["CID"] == "11122" for row in rows)
 
 
 def test_download_assay_results_json_format(tmp_path):
