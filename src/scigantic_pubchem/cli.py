@@ -22,6 +22,8 @@ from .gene_protein import (
     protein_assay_results,
     protein_info,
 )
+from .mirror import download as mirror_download
+from .mirror import identifiers as mirror_identifiers
 from .resolve import resolve
 from .similarity import similar_compounds, substructure_search
 from .tox21 import tox21_matrix, tox21_results
@@ -43,6 +45,22 @@ def _cmd_chembl_id(args: argparse.Namespace) -> int:
         print(f"no ChEMBL cross-reference for {args.identifier!r}", file=sys.stderr)
         return 1
     print(result)
+    return 0
+
+
+def _cmd_mirror_identifiers(args: argparse.Namespace) -> int:
+    result = mirror_identifiers(args.cid)
+    if result is None:
+        print(f"CID {args.cid} not in the mirror", file=sys.stderr)
+        return 1
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def _cmd_mirror_download(args: argparse.Namespace) -> int:
+    paths = mirror_download(args.dest, tables=args.table or None)
+    for table, path in paths.items():
+        print(f"{table}: {path}")
     return 0
 
 
@@ -176,6 +194,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     pdb_parser.add_argument("identifier")
     pdb_parser.add_argument("--namespace", default="cid", choices=["name", "cid", "smiles", "inchikey", "inchi", "formula"])
     pdb_parser.set_defaults(func=_cmd_pdb_structures)
+
+    mirror_id_parser = subparsers.add_parser(
+        "mirror-identifiers", help="CID-keyed identifier/name/mass lookup from the local parquet mirror (no live call)"
+    )
+    mirror_id_parser.add_argument("cid", type=int)
+    mirror_id_parser.set_defaults(func=_cmd_mirror_identifiers)
+
+    mirror_download_parser = subparsers.add_parser(
+        "mirror-download", help="download the mirror's parquet files for local/offline DuckDB use"
+    )
+    mirror_download_parser.add_argument("dest", help="destination directory")
+    mirror_download_parser.add_argument(
+        "--table", action="append", help="table to download (repeatable; default: all eight)"
+    )
+    mirror_download_parser.set_defaults(func=_cmd_mirror_download)
 
     xrefs_parser = subparsers.add_parser("xrefs", help="raw cross-references PubChem has on file")
     xrefs_parser.add_argument("identifier")

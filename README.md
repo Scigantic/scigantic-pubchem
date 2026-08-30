@@ -152,6 +152,29 @@ Both are on-demand DuckDB queries against the public [scigantic-chembl](https://
 $ pip install "scigantic-pubchem[bridge]"
 ```
 
+## Local mirror
+
+Everything above is a live PUG REST call. For CID-keyed bulk or offline work, this package also reads [s3://scigantic-pubchem](https://github.com/Scigantic/scigantic-pubchem), a weekly-refreshed local parquet mirror of PubChem's compound identifier/name/mass registry (~15.5 GB: SMILES, titles, IUPAC names, InChI/InChIKeys, formula/mass, parent CIDs, CID-to-SID provenance, and synonyms):
+
+```python
+pubchem.identifiers(2244)
+# {'cid': 2244, 'smiles': 'CC(=O)OC1=CC=CC=C1C(=O)O', 'title': 'Aspirin', ...}
+
+pubchem.synonyms(2244)
+# ['Aspirin', 'Acetylsalicylic acid', '2-Acetoxybenzoic acid', ...]
+```
+
+Every mirror table is exported in ascending CID order, so a CID-filtered query gets real row-group pruning from a remote parquet read; a name/InChIKey/SMILES query would not, so use `resolve()`/`xrefs()` above for those instead of this mirror.
+
+For real bulk/offline work, `download_mirror()` pulls the parquet files down once so you can query them locally with your own DuckDB or pandas session, no network round trip per query:
+
+```python
+pubchem.download_mirror("./pubchem_mirror")  # all 8 tables, ~15.5 GB
+pubchem.download_mirror("./pubchem_mirror", tables=["smiles", "titles"])  # just these, ~3.4 GB
+```
+
+Needs `duckdb` for the live lookup functions (`identifiers`, `inchi_keys`, `synonyms`, `parent`, `substance_ids`), same extra as the ChEMBL/BindingDB bridge above; `download_mirror` only needs `requests`, already a base dependency.
+
 ## Batch resolution
 
 ```python
@@ -181,6 +204,8 @@ $ scigantic-pubchem gene-assay-results EGFR
 $ scigantic-pubchem protein-assay-results P00533
 $ scigantic-pubchem tox21-results NR-AhR
 $ scigantic-pubchem tox21-matrix
+$ scigantic-pubchem mirror-identifiers 2244
+$ scigantic-pubchem mirror-download ./pubchem_mirror --table smiles --table titles
 ```
 
 ## License

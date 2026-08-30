@@ -1,6 +1,10 @@
 """Query PubChem live via PUG REST, with caching and rate-limit-aware
 retry PubChemPy doesn't have, plus live cross-references into
-scigantic-chembl and scigantic-bindingdb. No mirror, no download."""
+scigantic-chembl and scigantic-bindingdb. Also reads
+s3://scigantic-pubchem, a weekly-refreshed local parquet mirror of
+PubChem's compound identifier/name/mass registry, for CID-keyed bulk/
+offline work (see the mirror module) -- everything else here is still a
+live PUG REST call, no other mirror or download."""
 
 from importlib.metadata import PackageNotFoundError, version as _version
 
@@ -24,6 +28,8 @@ from .gene_protein import (
     protein_assay_results,
     protein_info,
 )
+from .mirror import download as download_mirror
+from .mirror import identifiers, inchi_keys, parent, substance_ids, synonyms
 from .models import AssayResult, AssaySummary, Compound, GeneInfo, ProteinInfo
 from .resolve import resolve, resolve_many
 from .similarity import similar_compounds, substructure_search
@@ -82,4 +88,10 @@ __all__ = [
     "is_cache_enabled",
     "cache_dir",
     "clear_cache",
+    "identifiers",
+    "inchi_keys",
+    "synonyms",
+    "parent",
+    "substance_ids",
+    "download_mirror",
 ]
