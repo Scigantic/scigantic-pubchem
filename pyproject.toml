@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scigantic-pubchem"
-version = "0.6.2"
-description = "Query PubChem live via PUG REST, with rate-limit-aware retry, expiring cache, live similarity/substructure/cross-reference search, bioassay/gene/protein/PDB cross-reference data (with a streaming downloader), and the Tox21 Data Challenge panel."
+version = "0.7.0"
+description = "Query PubChem live via PUG REST, with rate-limit-aware retry, expiring cache, live similarity/substructure/cross-reference search, bioassay/gene/protein/PDB cross-reference data (with a streaming downloader), the Tox21 Data Challenge panel, and CID-keyed reads of a local parquet mirror of the identifier/name/mass registry."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT-0" }
