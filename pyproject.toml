@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scigantic-pubchem"
-version = "0.7.0"
+version = "0.7.1"
 description = "Query PubChem live via PUG REST, with rate-limit-aware retry, expiring cache, live similarity/substructure/cross-reference search, bioassay/gene/protein/PDB cross-reference data (with a streaming downloader), the Tox21 Data Challenge panel, and CID-keyed reads of a local parquet mirror of the identifier/name/mass registry."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,14 +25,21 @@ classifiers = [
 ]
 
 dependencies = [
-  "requests>=2.28",
+  # Upper bound checked live against requests' current PyPI major (2.x) on
+  # 2026-08-31; a future 3.0 isn't out yet, so this is defensive, not a
+  # response to a known break.
+  "requests>=2.28,<3",
 ]
 
 [project.optional-dependencies]
 # duckdb is only needed for chembl_context()/bindingdb_measurements(), the
 # live cross-references into scigantic-chembl/scigantic-bindingdb; every
 # other function in this package works without it.
-bridge = ["duckdb>=0.10", "pandas>=1.5"]
+#
+# Upper bounds checked live against each package's current PyPI major
+# (duckdb 1.x, pandas 3.x) on 2026-08-31; defensive ceilings, not a response
+# to a known break in either's next major.
+bridge = ["duckdb>=0.10,<2", "pandas>=1.5,<4"]
 dev = ["pytest>=7", "mypy>=1.10", "types-requests", "pandas-stubs"]
 
 [project.urls]
