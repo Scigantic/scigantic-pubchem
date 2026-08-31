@@ -60,9 +60,10 @@ pubchem.xrefs_many([2244, 3672, 2519])       # {2244: [...], 3672: [...], 2519: 
 pubchem.chembl_ids_many([2244, 3672, 2519])  # {2244: 'CHEMBL25', 3672: 'CHEMBL521', 2519: 'CHEMBL113'}
 
 pubchem.pdb_structures(5291)   # [110242, 131625, ...], 27 deposited structures with imatinib bound as a ligand
+pubchem.pdb_structures_many([5291, 2244])   # {5291: [110242, ...], 2244: [...]}, every requested CID gets an entry
 ```
 
-PubChem's own `xrefs/RegistryID` endpoint already carries the ChEMBL ID for a compound when one exists (verified live against aspirin, CID 2244 resolves to CHEMBL25). PubChemPy can reach the same endpoint through its low-level `request()`/`get()` functions; this package wraps it as a named, documented function. The batch versions accept a comma-separated CID list in one PUG REST request, the same way `resolve_many()` does (see below).
+PubChem's own `xrefs/RegistryID` endpoint already carries the ChEMBL ID for a compound when one exists (verified live against aspirin, CID 2244 resolves to CHEMBL25). PubChemPy can reach the same endpoint through its low-level `request()`/`get()` functions; this package wraps it as a named, documented function. The batch versions accept a comma-separated CID list in one PUG REST request, the same way `resolve_many()` does (see below). `pdb_structures_many()` is the batch form of `pdb_structures()`, looping over the input CIDs explicitly so every one gets an entry (an empty list if it has no structures on file) regardless of `xrefs_many()`'s own chunk-dependent presence (see its docstring).
 
 `pdb_structures()` reads a different xrefs type, `MMDBID`: NCBI's Molecular Modeling Database, its own mirror of PDB structure data. Not the 4-character PDB ID itself -- verified live 2026-08-29 that PUG REST has no xrefs type that returns one directly (`MMDBID` is valid, `PDBID` 400s), and mapping an MMDB ID to its PDB ID needs a separate NCBI service outside PUG REST, out of scope for a package that only ever calls `pubchem.ncbi.nlm.nih.gov/rest/pug`. Each ID is still a real, usable pointer to a deposited structure, viewable at `ncbi.nlm.nih.gov/Structure/mmdb/mmdbsrv.cgi?uid={id}`.
 
@@ -89,10 +90,16 @@ summary = pubchem.assay_summary(1)
 
 results = pubchem.assay_results(1)          # every (SID, CID, outcome) row PubChem has for this assay
 pubchem.compound_assay_results(2244)        # every assay result recorded for aspirin, the reverse direction
+pubchem.compound_assay_results_many([2244, 3672])  # {2244: [...], 3672: [...]}, chunked and parallelized
+
+pubchem.assay_cids(1)                       # every CID tested in this assay
+pubchem.assay_sids(1)                       # every SID (pre-standardization substance ID) tested in this assay
 
 pubchem.aids_for_compound(2244)             # every AID that tested aspirin
 pubchem.aids_for_target("EGFR")             # every AID run against a gene target
 ```
+
+`compound_assay_results_many()` is the batch form of `compound_assay_results()`, chunked at 200 CIDs per request and parallelized the same way `resolve_many()`/`xrefs_many()` are; a CID with no assay results at all is simply absent from the returned dict. `assay_cids()`/`assay_sids()` read PUG REST's own `cids`/`sids` operations directly: the same CID/SID columns `assay_results()`'s `concise` table already carries per row, as a plain list when all you need is "which compounds/substances did this assay touch," with no per-row outcome data to parse.
 
 PubChemPy's `Assay`/`get_assays()` only reach PUG REST's `description` operation, the raw, deeply nested record built to round-trip a depositor's original submission (protocol text, full result-column schema, revision history), not to be read programmatically. Verified 2026-08-29 by reading PubChemPy's source directly: the strings `concise`, `assaysummary`, and `summary` never appear in it, under the assay domain or otherwise, so it has no path to the tabular bioactivity data (AID/SID/CID/Activity Outcome/...) most callers actually want. This package wraps those operations instead. `assay_summary()` gives the flat overview (name, description, target, active/inactive/total counts) `description` buries in that nested record; `assay_results()`/`compound_assay_results()` give the row-level bioactivity table, in both directions, using PUG REST's `concise` and `assaysummary` operations, which are PubChem's own purpose-built compact formats for exactly this.
 
@@ -162,7 +169,17 @@ pubchem.identifiers(2244)
 
 pubchem.synonyms(2244)
 # ['Aspirin', 'Acetylsalicylic acid', '2-Acetoxybenzoic acid', ...]
+
+pubchem.inchi_keys(2244)
+# DataFrame: one (inchi, inchikey) row per protonation state PubChem has on file for this CID
+
+pubchem.parent(2244)          # 2244; a CID may be its own parent, or have none (returns None)
+
+pubchem.substance_ids(2244)
+# DataFrame of (sid, link_type) rows: every SID this CID derives from, per PubChem's own README-Extras
 ```
+
+`identifiers()` already returns the first InChIKey it finds; `inchi_keys()` is for when a CID has more than one (one per protonation state) and you need all of them, not just the first. `substance_ids()`'s `link_type` is 1 for the standardized form of the deposited substance, 2 for a component of it.
 
 Every mirror table is exported in ascending CID order, so a CID-filtered query gets real row-group pruning from a remote parquet read; a name/InChIKey/SMILES query would not, so use `resolve()`/`xrefs()` above for those instead of this mirror.
 
@@ -195,6 +212,8 @@ $ scigantic-pubchem substructure c1ccccc1
 $ scigantic-pubchem assay-summary 1
 $ scigantic-pubchem assay-results 1 3
 $ scigantic-pubchem compound-assay-results 2244
+$ scigantic-pubchem assay-cids 1
+$ scigantic-pubchem assay-sids 1
 $ scigantic-pubchem aids-for-compound 2244
 $ scigantic-pubchem aids-for-target EGFR
 $ scigantic-pubchem assay-download 1259416 aid1259416.csv

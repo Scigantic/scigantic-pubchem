@@ -47,6 +47,20 @@ def test_aids_for_target_command(capsys):
     assert "1433" in out.splitlines()
 
 
+def test_assay_cids_command(capsys):
+    exit_code = main(["assay-cids", "3"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "11122" in out.splitlines()
+
+
+def test_assay_sids_command(capsys):
+    exit_code = main(["assay-sids", "3"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "66954" in out.splitlines()
+
+
 def test_assay_download_command(capsys, tmp_path):
     dest = tmp_path / "aid3.csv"
     exit_code = main(["assay-download", "3", str(dest)])

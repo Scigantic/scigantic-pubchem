@@ -11,7 +11,9 @@ from typing import Sequence, cast
 from .bioassay import (
     aids_for_compound,
     aids_for_target,
+    assay_cids,
     assay_results,
+    assay_sids,
     assay_summary,
     compound_assay_results,
     download_assay_results,
@@ -114,6 +116,18 @@ def _cmd_assay_results(args: argparse.Namespace) -> int:
 def _cmd_compound_assay_results(args: argparse.Namespace) -> int:
     for result in compound_assay_results(args.identifier, namespace=args.namespace):
         print(json.dumps(dataclasses.asdict(result)))
+    return 0
+
+
+def _cmd_assay_cids(args: argparse.Namespace) -> int:
+    for cid in assay_cids(args.aid):
+        print(cid)
+    return 0
+
+
+def _cmd_assay_sids(args: argparse.Namespace) -> int:
+    for sid in assay_sids(args.aid):
+        print(sid)
     return 0
 
 
@@ -242,6 +256,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     compound_results_parser.add_argument("identifier")
     compound_results_parser.add_argument("--namespace", default="cid", choices=["name", "cid", "smiles", "inchikey", "inchi", "formula"])
     compound_results_parser.set_defaults(func=_cmd_compound_assay_results)
+
+    assay_cids_parser = subparsers.add_parser("assay-cids", help="CIDs tested in one assay")
+    assay_cids_parser.add_argument("aid", type=int)
+    assay_cids_parser.set_defaults(func=_cmd_assay_cids)
+
+    assay_sids_parser = subparsers.add_parser("assay-sids", help="SIDs tested in one assay")
+    assay_sids_parser.add_argument("aid", type=int)
+    assay_sids_parser.set_defaults(func=_cmd_assay_sids)
 
     aids_compound_parser = subparsers.add_parser("aids-for-compound", help="AIDs of every assay that tested a compound")
     aids_compound_parser.add_argument("identifier")
