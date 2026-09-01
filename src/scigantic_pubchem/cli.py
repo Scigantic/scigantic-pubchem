@@ -16,7 +16,9 @@ from .bioassay import (
     assay_sids,
     assay_summary,
     compound_assay_results,
+    dose_response,
     download_assay_results,
+    download_dose_response,
 )
 from .gene_protein import (
     gene_assay_results,
@@ -145,6 +147,20 @@ def _cmd_aids_for_target(args: argparse.Namespace) -> int:
 
 def _cmd_assay_download(args: argparse.Namespace) -> int:
     dest = download_assay_results(args.aid, args.dest, fmt=args.format)
+    print(dest)
+    return 0
+
+
+def _cmd_dose_response(args: argparse.Namespace) -> int:
+    for result in dose_response(args.aid, sids=args.sid or None, cids=args.cid or None):
+        print(json.dumps(dataclasses.asdict(result)))
+    return 0
+
+
+def _cmd_dose_response_download(args: argparse.Namespace) -> int:
+    dest = download_dose_response(
+        args.aid, args.dest, sids=args.sid or None, chunk_size=args.chunk_size, resume=not args.no_resume
+    )
     print(dest)
     return 0
 
@@ -279,6 +295,31 @@ def main(argv: Sequence[str] | None = None) -> int:
     assay_download_parser.add_argument("dest")
     assay_download_parser.add_argument("--format", default="csv", choices=["csv", "json"])
     assay_download_parser.set_defaults(func=_cmd_assay_download)
+
+    dose_response_parser = subparsers.add_parser(
+        "assay-dose-response", help="raw per-concentration qHTS readout for up to 200 compounds in one assay"
+    )
+    dose_response_parser.add_argument("aid", type=int)
+    dose_response_parser.add_argument("--sid", type=int, action="append", help="SID to fetch (repeatable)")
+    dose_response_parser.add_argument(
+        "--cid", type=int, action="append", help="CID to fetch (repeatable, instead of --sid)"
+    )
+    dose_response_parser.set_defaults(func=_cmd_dose_response)
+
+    dose_response_download_parser = subparsers.add_parser(
+        "assay-dose-response-download",
+        help="resumable download of a whole assay's raw dose-response Data Table",
+    )
+    dose_response_download_parser.add_argument("aid", type=int)
+    dose_response_download_parser.add_argument("dest")
+    dose_response_download_parser.add_argument(
+        "--sid", type=int, action="append", help="SID to include (repeatable; default: the whole assay)"
+    )
+    dose_response_download_parser.add_argument("--chunk-size", type=int, default=200, dest="chunk_size")
+    dose_response_download_parser.add_argument(
+        "--no-resume", action="store_true", dest="no_resume", help="start over instead of resuming a partial download"
+    )
+    dose_response_download_parser.set_defaults(func=_cmd_dose_response_download)
 
     gene_info_parser = subparsers.add_parser("gene-info", help="overview for one gene")
     gene_info_parser.add_argument("identifier")

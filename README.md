@@ -111,6 +111,19 @@ pubchem.download_assay_results([1, 3], "combined.csv")                 # multipl
 pubchem.download_assay_results(1259416, "aid1259416.json", fmt="json")
 ```
 
+`concise`/`assaysummary` reduce a qHTS screen down to outcome plus a single fitted potency. The raw layer underneath that -- every tested concentration's raw percent response, including for a compound PubChem marked Inactive with no fitted curve at all -- is a different PUG REST operation entirely (the plain, non-`concise` `/CSV` Data Table), verified live 2026-08-31 against AID 1851 (a 5-isoform CYP inhibition qHTS panel, 17,143 compounds):
+
+```python
+results = pubchem.dose_response(1851, sids=[842238])   # or cids=[...]
+# [RawAssayResult(aid=1851, sid=842238, panel_name='p450-cyp1a2', activity_outcome='Inactive',
+#                  max_response=-11.9, potency_um=None,
+#                  dose_response=(DoseResponsePoint(concentration_um=0.0007, response_percent=-11.9), ...), ...), ...]
+
+pubchem.download_dose_response(1259416, "aid1259416_raw.csv")   # a whole assay, chunked and resumable
+```
+
+`dose_response()` is capped at 200 identifiers per call (raise past that with a pointer to `download_dose_response()`): this operation does not scale linearly the way `concise` does -- measured live against AID 1851, 250 SIDs returned in under a second, 2000 SIDs took 94s against the same server -- and PUG REST itself hard-caps it at 10,000 identifiers per request regardless ("Assay record retrieval is limited to 10000 SIDs"). `download_dose_response()` chunks conservatively (200 SIDs by default) and writes to disk as it goes, resumable by default: an interruption partway through a large panel assay (realistically many minutes even chunked) leaves a `{dest}.progress.json` sidecar, and re-running the same call picks up after the last confirmed chunk rather than starting over or risking a duplicated/corrupt file.
+
 ### Gene and protein
 
 ```python
@@ -217,6 +230,8 @@ $ scigantic-pubchem assay-sids 1
 $ scigantic-pubchem aids-for-compound 2244
 $ scigantic-pubchem aids-for-target EGFR
 $ scigantic-pubchem assay-download 1259416 aid1259416.csv
+$ scigantic-pubchem assay-dose-response 1851 --sid 842238
+$ scigantic-pubchem assay-dose-response-download 1259416 aid1259416_raw.csv
 $ scigantic-pubchem gene-info EGFR
 $ scigantic-pubchem protein-info P00533
 $ scigantic-pubchem gene-assay-results EGFR

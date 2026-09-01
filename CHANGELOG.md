@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.8.0
+
+Adds `dose_response()`/`download_dose_response()`: the raw, un-curated
+per-concentration qHTS Data Table underneath `assay_results()`'s `concise`
+summary. `concise`/`assaysummary` reduce a qHTS screen to outcome plus a
+single fitted potency; the raw layer -- every tested concentration's raw
+percent response, `Max_Response`, and curve-fit parameters, present even
+for a compound with no fitted curve at all -- is a structurally different
+PUG REST operation (the plain, non-`concise` `/CSV` Data Table), verified
+live 2026-08-31 against AID 1851 (a 5-isoform CYP inhibition qHTS panel,
+17,143 compounds): `concise` carries none of it.
+
+- `dose_response(aid, sids=..., cids=...)` returns typed `RawAssayResult`
+  rows (dataclass, with a `dose_response: tuple[DoseResponsePoint, ...]`
+  field for the per-concentration readout) for a bounded set of up to 200
+  identifiers in one call. Capped there rather than auto-chunked: this
+  operation does not scale linearly the way `concise` does (measured live:
+  250 SIDs under a second, 2000 SIDs took 94s against the same server),
+  and PUG REST itself hard-caps it at 10,000 identifiers per request
+  regardless.
+- `download_dose_response(aid, dest, ...)` pulls a whole assay, chunked
+  (200 SIDs by default) and resumable by default: progress is tracked in a
+  `{dest}.progress.json` sidecar (assay identity, chunk size, and SID
+  count, so a resume against different arguments is detected and
+  discarded with a warning instead of silently misapplied) plus the exact
+  byte offset `dest` was last known-good at, so an interruption mid-chunk
+  truncates back to that offset and retries cleanly rather than risking a
+  duplicated or corrupt file. Sequential, not parallelized the way
+  `compound_assay_results_many()` is, given the demonstrated per-request
+  cost on a live public NIH service.
+- Only PubChem's reserved `PUBCHEM_*` columns, the standard NCGC/NCATS
+  qHTS curve-fit vocabulary (`Potency`, `Curve_Description`, `Fit_*`,
+  `Max_Response`), and the `Panel_*` columns (present on multi-target
+  panel assays) are modelled as named `RawAssayResult` fields; everything
+  else is depositor-specific and lands in `extra` rather than being
+  hardcoded from one assay's shape. Note `Panel Name` carries the
+  mnemonic (e.g. `"p450-cyp1a2"`) and `Panel Target` the protein
+  accession (e.g. `"NP_000752.2"`) -- easy to mix up, verified live.
+- New CLI commands `assay-dose-response`/`assay-dose-response-download`,
+  matching the existing `assay-results`/`assay-download` pattern.
+
 ## 0.7.1
 
 Documentation and CLI parity only. No change to any existing function's
