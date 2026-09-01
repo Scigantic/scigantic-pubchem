@@ -69,6 +69,24 @@ def test_assay_download_command(capsys, tmp_path):
     assert capsys.readouterr().out.strip() == str(dest)
 
 
+def test_dose_response_command(capsys):
+    exit_code = main(["assay-dose-response", "1851", "--sid", "842238"])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert '"aid": 1851' in out
+    assert out.strip().count("\n") == 4  # 5 rows, one per panel target
+
+
+def test_dose_response_download_command(capsys, tmp_path):
+    dest = tmp_path / "dose_response.csv"
+    exit_code = main(
+        ["assay-dose-response-download", "1851", str(dest), "--sid", "842238", "--chunk-size", "2"]
+    )
+    assert exit_code == 0
+    assert dest.exists()
+    assert capsys.readouterr().out.strip() == str(dest)
+
+
 def test_gene_info_command(capsys):
     exit_code = main(["gene-info", "EGFR"])
     assert exit_code == 0

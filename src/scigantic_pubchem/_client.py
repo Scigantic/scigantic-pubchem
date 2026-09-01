@@ -129,7 +129,13 @@ def _get_session() -> requests.Session:
     return _session
 
 
-def _send_with_retry(method: str, url: str, params: dict[str, Any] | None, stream: bool = False) -> requests.Response:
+def _send_with_retry(
+    method: str,
+    url: str,
+    params: dict[str, Any] | None,
+    stream: bool = False,
+    timeout: float = 30.0,
+) -> requests.Response:
     """The retry/backoff loop request() and stream_to_file() both need:
     paces every attempt through the token bucket, retries 429/5xx with
     backoff informed by X-Throttling-Control, and raises
@@ -140,6 +146,14 @@ def _send_with_retry(method: str, url: str, params: dict[str, Any] | None, strea
     large assay directly to disk) defers reading the body so the caller
     can iter_content() it rather than this function buffering the whole
     thing first just to hand it back.
+
+    timeout defaults to 30s, the ceiling every existing caller already
+    ran under. bioassay.py's dose_response()/download_dose_response()
+    pass a much larger value: measured live 2026-08-31 against AID 1851,
+    PUG REST's full (non-concise) assay Data Table operation does not
+    scale linearly -- 250 SIDs returned in under a second, 2000 SIDs took
+    94s against the same server -- so a 30s timeout would fail requests
+    that are genuinely still in progress, not stuck.
     """
     session = _get_session()
     last_exc: Exception | None = None
@@ -148,9 +162,9 @@ def _send_with_retry(method: str, url: str, params: dict[str, Any] | None, strea
         _limiter.acquire()
         try:
             if method == "POST":
-                response = session.post(url, data=params, timeout=30, stream=stream)
+                response = session.post(url, data=params, timeout=timeout, stream=stream)
             else:
-                response = session.get(url, params=params, timeout=30, stream=stream)
+                response = session.get(url, params=params, timeout=timeout, stream=stream)
         except requests.RequestException as exc:
             last_exc = exc
             time.sleep(2 ** attempt)
@@ -185,6 +199,7 @@ def request(
     params: dict[str, Any] | None = None,
     method: str = "GET",
     cacheable: bool = True,
+    timeout: float = 30.0,
 ) -> dict[str, Any]:
     """GET (or POST, for long identifier lists) a PUG REST path and return
     the parsed JSON body.
@@ -211,11 +226,35 @@ def request(
             return cached
 
     url = f"{_BASE}{path}"
-    response = _send_with_retry(method, url, params)
+    response = _send_with_retry(method, url, params, timeout=timeout)
     body: dict[str, Any] = response.json()
     if method == "GET" and cacheable:
         cache.put(path, params, body)
     return body
+
+
+def request_text(
+    path: str,
+    params: dict[str, Any] | None = None,
+    method: str = "GET",
+    timeout: float = 30.0,
+) -> str:
+    """Like request(), for a PUG REST operation whose response is CSV, not
+    JSON -- bioassay.py's dose_response()/download_dose_response(), which
+    read the plain (non-concise) `/assay/aid/{aid}/CSV` operation. That
+    operation returns a flat table directly, unlike the same AID's plain
+    JSON/XML (PC_AssaySubmit, the deeply nested depositor record this
+    package otherwise avoids -- verified live 2026-08-31), so CSV is the
+    only usable format here.
+
+    Not cached, for the same reason stream_to_file() isn't: a chunk of
+    this data can run to single-digit MB on its own, and
+    download_dose_response()'s on-disk progress tracking is already the
+    thing that avoids repeat work across a resumed pull.
+    """
+    url = f"{_BASE}{path}"
+    response = _send_with_retry(method, url, params, timeout=timeout)
+    return response.text
 
 
 def stream_to_file(path: str, dest: Path | str, params: dict[str, Any] | None = None) -> Path:

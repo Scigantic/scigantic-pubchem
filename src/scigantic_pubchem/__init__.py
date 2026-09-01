@@ -17,7 +17,9 @@ from .bioassay import (
     assay_summary,
     compound_assay_results,
     compound_assay_results_many,
+    dose_response,
     download_assay_results,
+    download_dose_response,
 )
 from .bridge import bindingdb_measurements, chembl_context
 from .cache import cache_dir, disable_cache, enable_cache, is_cache_enabled
@@ -30,7 +32,15 @@ from .gene_protein import (
 )
 from .mirror import download as download_mirror
 from .mirror import identifiers, inchi_keys, parent, substance_ids, synonyms
-from .models import AssayResult, AssaySummary, Compound, GeneInfo, ProteinInfo
+from .models import (
+    AssayResult,
+    AssaySummary,
+    Compound,
+    DoseResponsePoint,
+    GeneInfo,
+    ProteinInfo,
+    RawAssayResult,
+)
 from .resolve import resolve, resolve_many
 from .similarity import similar_compounds, substructure_search
 from .tox21 import TOX21_ENDPOINTS, tox21_matrix, tox21_results
@@ -71,6 +81,8 @@ __all__ = [
     "aids_for_compound",
     "aids_for_target",
     "download_assay_results",
+    "dose_response",
+    "download_dose_response",
     "gene_info",
     "protein_info",
     "gene_assay_results",
@@ -81,6 +93,8 @@ __all__ = [
     "Compound",
     "AssaySummary",
     "AssayResult",
+    "DoseResponsePoint",
+    "RawAssayResult",
     "GeneInfo",
     "ProteinInfo",
     "enable_cache",

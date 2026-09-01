@@ -9,6 +9,15 @@ network round trip per distinct (path, params), not one per test.
 download_assay_results() is the exception: it deliberately bypasses the
 cache (see _client.stream_to_file), so each download test below pays its
 own real transfer.
+
+dose_response()/download_dose_response() use AID 1851 (NCGC's 5-isoform
+CYP inhibition qHTS panel, 17,143 SIDs), always scoped to an explicit
+small sids= subset -- verified live 2026-08-31 that this operation does
+not scale linearly (250 SIDs under a second, 2000 SIDs took 94s), so a
+full-assay pull has no place in a test suite that runs on every push
+across five Python versions. SID 842238 in particular is verified live to
+carry rows across all 5 panel targets (a mix of Inactive/Inconclusive
+outcomes), so it anchors the single-compound assertions below.
 """
 
 import csv
@@ -191,3 +200,140 @@ def test_download_assay_results_leaves_no_partial_file_on_stream_error(tmp_path)
 
     assert not dest.exists()
     assert list(tmp_path.glob("*.part")) == []
+
+
+# All 6 verified live 2026-08-31 to carry exactly 5 panel rows each (30 total).
+_AID_1851_SIDS = [4252546, 4253874, 4254135, 7977146, 11110647, 11111975]
+
+
+def _data_rows(path):
+    """Rows from a download_dose_response() CSV excluding PUG REST's own
+    RESULT_TYPE/RESULT_DESCR/RESULT_UNIT/... metadata preamble (kept once,
+    from the first chunk, not per data row)."""
+    with path.open(newline="") as f:
+        return [row for row in csv.DictReader(f) if row["PUBCHEM_RESULT_TAG"].isdigit()]
+
+
+def test_dose_response_known_compound():
+    results = pubchem.dose_response(1851, sids=[842238])
+    assert len(results) == 5  # one row per panel target, verified live 2026-08-31
+    # "Panel Name" carries the mnemonic (p450-cyp1a2); "Panel Target" is the
+    # protein accession (NP_...) -- verified live 2026-08-31, easy to swap.
+    names = {r.panel_name for r in results}
+    assert names == {"p450-cyp1a2", "p450-cyp2c9", "p450-cyp2c19", "p450-cyp2d6", "p450-cyp3a4"}
+    assert all(r.panel_target is not None and r.panel_target.startswith("NP_") for r in results)
+    assert all(r.aid == 1851 and r.sid == 842238 for r in results)
+    inactive = [r for r in results if r.activity_outcome == "Inactive"]
+    assert inactive  # at least one panel target inactive for this SID
+    # The whole point: an Inactive row (no fitted potency) still carries a
+    # raw Max_Response and per-concentration readout.
+    assert any(r.max_response is not None for r in inactive)
+    assert any(r.potency_um is None for r in inactive)
+    assert all(len(r.dose_response) > 0 for r in results)
+    assert all(p.concentration_um > 0 for r in results for p in r.dose_response)
+
+
+def test_dose_response_by_cid():
+    results = pubchem.dose_response(1851, cids=[6602638])
+    assert len(results) > 0
+    assert all(r.cid == 6602638 for r in results)
+
+
+def test_dose_response_requires_exactly_one_of_sids_cids():
+    with pytest.raises(ValueError):
+        pubchem.dose_response(1851)
+    with pytest.raises(ValueError):
+        pubchem.dose_response(1851, sids=[1], cids=[2])
+
+
+def test_dose_response_rejects_too_many_ids():
+    with pytest.raises(ValueError):
+        pubchem.dose_response(1851, sids=list(range(201)))
+
+
+def test_dose_response_unknown_aid_returns_empty():
+    assert pubchem.dose_response(987654, sids=[842238]) == []
+
+
+def test_download_dose_response_writes_and_resumes(tmp_path):
+    dest = tmp_path / "dose_response.csv"
+    result = pubchem.download_dose_response(1851, dest, sids=_AID_1851_SIDS, chunk_size=2)
+    assert result == dest
+    rows = _data_rows(dest)
+    assert len(rows) == 5 * len(_AID_1851_SIDS)  # verified live: 5 panel rows per SID
+    assert {row["PUBCHEM_SID"] for row in rows} == {str(s) for s in _AID_1851_SIDS}
+    # PUG REST's metadata preamble (RESULT_TYPE/RESULT_DESCR/RESULT_UNIT/
+    # RESULT_ATTR_CONC_MICROMOL) is repeated in every chunk's own response,
+    # but should land in the combined file exactly once (from the first
+    # chunk), not once per chunk.
+    with dest.open(newline="") as f:
+        all_rows = list(csv.DictReader(f))
+    assert len(all_rows) - len(rows) == 4
+    assert not dest.with_name(dest.name + ".progress.json").exists()  # cleaned up on completion
+
+
+def test_download_dose_response_resumes_after_interruption(tmp_path):
+    dest = tmp_path / "resumed.csv"
+    progress_path = dest.with_name(dest.name + ".progress.json")
+    real_request_text = _client.request_text
+
+    calls = {"n": 0}
+
+    def _flaky(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise _client.PubChemError("simulated failure")
+        return real_request_text(*args, **kwargs)
+
+    with mock.patch("scigantic_pubchem.bioassay._client.request_text", side_effect=_flaky):
+        with pytest.raises(_client.PubChemError):
+            pubchem.download_dose_response(1851, dest, sids=_AID_1851_SIDS, chunk_size=2)
+
+    assert dest.exists()
+    assert progress_path.exists()
+    partial_state = json.loads(progress_path.read_text())
+    assert partial_state["done"] == 1  # first chunk succeeded, second raised
+
+    result = pubchem.download_dose_response(1851, dest, sids=_AID_1851_SIDS, chunk_size=2)
+    assert result == dest
+    assert not progress_path.exists()
+    rows = _data_rows(dest)
+    # Exactly the expected row count: chunk 1 (the interrupted one) was
+    # truncated away and redone cleanly, not double-applied, and the
+    # 4-row metadata preamble was not repeated either.
+    assert len(rows) == 5 * len(_AID_1851_SIDS)
+    assert {row["PUBCHEM_SID"] for row in rows} == {str(s) for s in _AID_1851_SIDS}
+    assert dest.read_text().count("PUBCHEM_RESULT_TAG") == 1  # one header line, not one per chunk
+
+
+def test_download_dose_response_discards_mismatched_resume_state(tmp_path):
+    dest = tmp_path / "mismatched.csv"
+    real_request_text = _client.request_text
+
+    calls = {"n": 0}
+
+    def _fail_second(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise _client.PubChemError("simulated failure")
+        return real_request_text(*args, **kwargs)
+
+    # Leave a genuine partial-progress state behind (chunk 1 of 3 done).
+    with mock.patch("scigantic_pubchem.bioassay._client.request_text", side_effect=_fail_second):
+        with pytest.raises(_client.PubChemError):
+            pubchem.download_dose_response(1851, dest, sids=_AID_1851_SIDS[:3], chunk_size=1)
+    progress_path = dest.with_name(dest.name + ".progress.json")
+    assert progress_path.exists()
+
+    with pytest.warns(UserWarning, match="stale resume state"):
+        # Different sids -> different fingerprint -> discarded, not misapplied.
+        result = pubchem.download_dose_response(1851, dest, sids=_AID_1851_SIDS[3:5], chunk_size=1)
+    assert not progress_path.exists()
+    rows = _data_rows(dest)
+    assert {row["PUBCHEM_SID"] for row in rows} == {str(s) for s in _AID_1851_SIDS[3:5]}
+    assert result == dest
+
+
+def test_download_dose_response_unknown_aid_raises():
+    with pytest.raises(ValueError):
+        pubchem.download_dose_response(987654, "unused.csv")

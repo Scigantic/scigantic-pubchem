@@ -76,6 +76,67 @@ class AssayResult:
 
 
 @dataclass(frozen=True)
+class DoseResponsePoint:
+    """One titration point from a qHTS curve: a tested concentration and
+    the raw percent response PubChem recorded there, before any curve
+    fitting. Present even for a compound with no fitted curve at all --
+    an Inactive row still carries its raw per-concentration readings,
+    verified live 2026-08-31 against AID 1851."""
+
+    concentration_um: float
+    response_percent: float | None
+
+
+@dataclass(frozen=True)
+class RawAssayResult:
+    """One (SID, panel member) row from an assay's full, un-curated Data
+    Table -- PUG REST's plain `/assay/aid/{aid}/CSV` operation, not
+    `concise`. `concise`/`assaysummary` (AssayResult above) strip a qHTS
+    screen down to outcome plus a single fitted potency; this is the
+    layer underneath: the raw per-concentration response PubChem's
+    depositor actually submitted, including for compounds that never
+    cleared curve-fitting into a potency at all.
+
+    Verified live 2026-08-31 against AID 1851 (a 5-isoform CYP inhibition
+    qHTS panel) that this is genuinely a different, much wider column set
+    than `concise`'s fixed 12 columns, not an extension of it. Only
+    PubChem's reserved PUBCHEM_* columns, the standard NCGC/NCATS qHTS
+    curve-fit vocabulary (Potency, Curve_Description, Fit_*,
+    Max_Response), and the Panel_* columns (present on multi-target panel
+    assays) are modelled as named fields here -- the remainder of that
+    AID's columns ("Inhibition Observed", "Approved Drug", "Collection",
+    "Compound QC", ...) are depositor-specific commentary, not part of
+    any fixed schema, so they land in `extra` rather than being hardcoded
+    from one assay's shape. See dose_response()/download_dose_response()
+    in bioassay.py.
+    """
+
+    aid: int
+    sid: int
+    cid: int | None
+    smiles: str | None
+    activity_outcome: str | None
+    activity_score: int | None
+    activity_url: str | None
+    comment: str | None
+    panel_id: int | None
+    panel_name: str | None  # the mnemonic, e.g. "p450-cyp1a2" -- verified live 2026-08-31
+    panel_target: str | None  # the protein accession, e.g. "NP_000752.2" -- easy to mix these two up
+    potency_um: float | None
+    curve_description: str | None
+    fit_logac50: float | None
+    fit_hillslope: float | None
+    fit_r2: float | None
+    fit_infinite_activity: float | None
+    fit_zero_activity: float | None
+    fit_curveclass: str | None
+    excluded_points: str | None
+    max_response: float | None
+    dose_response: tuple[DoseResponsePoint, ...]
+    extra: dict[str, str]
+
+
+@dataclass(frozen=True)
 class GeneInfo:
     gene_id: int
     symbol: str | None
