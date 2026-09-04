@@ -25,6 +25,7 @@ fact.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import threading
@@ -194,6 +195,37 @@ def _send_with_retry(
     raise PubChemError(f"PUG REST request failed after {_MAX_RETRIES} attempts: {last_exc}")
 
 
+def _parse_json(response: requests.Response, url: str) -> dict[str, Any]:
+    """response.json(), with one fallback for a real, observed PubChem
+    quirk: a large `concise`/`assaysummary` response can carry a
+    depositor's raw, unescaped ASCII control character inside a free-text
+    field (an assay comment or description), which the standard decoder
+    (strict=True, the default for both json.loads and Response.json())
+    rejects outright with "Invalid control character" -- verified live
+    2026-09-04 against a ~20MB response mid-batch. Not a transient/network
+    problem (re-requesting the same identifier returns the identical
+    bytes, verified by reparsing the same response text rather than
+    refetching it), so this doesn't retry over the network for it.
+
+    json.loads's own strict=False is the documented escape hatch for
+    exactly this: it allows control characters (0x00-0x1F, including a
+    literal tab/newline/null) inside a string instead of requiring them
+    escaped as \\u00XX. Tried only after the strict parse fails, so a
+    normal response pays no extra cost.
+    """
+    try:
+        body: dict[str, Any] = response.json()
+    except ValueError:
+        try:
+            body = json.loads(response.text, strict=False)
+        except ValueError as exc:
+            raise PubChemError(
+                f"PUG REST response for {url} is not valid JSON, even with relaxed "
+                f"control-character handling: {exc}"
+            ) from exc
+    return body
+
+
 def request(
     path: str,
     params: dict[str, Any] | None = None,
@@ -227,7 +259,7 @@ def request(
 
     url = f"{_BASE}{path}"
     response = _send_with_retry(method, url, params, timeout=timeout)
-    body: dict[str, Any] = response.json()
+    body = _parse_json(response, url)
     if method == "GET" and cacheable:
         cache.put(path, params, body)
     return body
@@ -314,14 +346,29 @@ def request_search(path: str, params: dict[str, Any] | None = None) -> dict[str,
     catches a fast job sooner than the old fixed wait did; the doubling is
     what keeps a slow job from paying for that on every subsequent poll.
 
-    Neither the initial call nor the polling calls are cached
-    (cacheable=False): a ListKey is single-use, and caching an
-    intermediate "still waiting" response under the search's own
-    (path, params) key would mean a later, unrelated call to the same
-    search replays that stale in-progress state instead of making a fresh
-    request. Callers that want to avoid repeat searches should cache the
-    resolved CIDs themselves.
+    The polling calls themselves are never cached (request(..., cacheable=False)
+    for each one): a ListKey is single-use, so there is nothing correct to
+    key a cache entry on besides the search's own (path, params), and an
+    intermediate "still waiting" response cached under that key would mean
+    a later, unrelated call to the same search replays stale in-progress
+    state instead of making a fresh request.
+
+    The search itself is checked against the cache first, and the final
+    resolved body (never an intermediate "Waiting" one) is written back
+    under (path, params) once polling ends, the same key request() would
+    use for any other idempotent GET. Before this, a search's own result
+    was never cached at all, so re-running the same similarity/substructure
+    query, e.g. resuming a batch job after a crash partway through, always
+    repeated the full live search, including any async poll, even though
+    resolve_many()'s follow-up lookup for the returned CIDs was already
+    cached. Same 30-day TTL and staleness tradeoff as everything else (see
+    cache.py); a caller that wants a guaranteed-fresh corpus search should
+    disable_cache() or clear_cache() rather than expect this endpoint to be
+    special-cased.
     """
+    cached = cache.get(path, params)
+    if cached is not None:
+        return cached
     body = request(path, params, method="GET", cacheable=False)
     poll_wait = _POLL_INITIAL_SECONDS
     while "Waiting" in body and "ListKey" in body.get("Waiting", {}):
@@ -329,4 +376,5 @@ def request_search(path: str, params: dict[str, Any] | None = None) -> dict[str,
         poll_wait = min(poll_wait * _POLL_BACKOFF_FACTOR, _POLL_MAX_SECONDS)
         listkey = body["Waiting"]["ListKey"]
         body = request(f"/compound/listkey/{listkey}/cids/JSON", method="GET", cacheable=False)
+    cache.put(path, params, body)
     return body
