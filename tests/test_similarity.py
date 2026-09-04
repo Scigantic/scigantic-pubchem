@@ -18,6 +18,20 @@ def test_similar_compounds_resolves_to_full_records_by_default():
     assert any(c.cid == 2244 for c in compounds)
 
 
+def test_similar_compounds_many_keys_results_by_input_smiles():
+    _CAFFEINE_SMILES = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
+    results = pubchem.similar_compounds_many(
+        [_ASPIRIN_SMILES, _CAFFEINE_SMILES], threshold=95, max_records=5, resolve=False
+    )
+    assert set(results) == {_ASPIRIN_SMILES, _CAFFEINE_SMILES}
+    assert 2244 in results[_ASPIRIN_SMILES]  # aspirin's own CID
+    assert 2519 in results[_CAFFEINE_SMILES]  # caffeine's own CID
+
+
+def test_similar_compounds_many_empty_input():
+    assert pubchem.similar_compounds_many([]) == {}
+
+
 def test_substructure_search_smiles():
     cids = pubchem.substructure_search("c1ccccc1", query_type="smiles", max_records=10, resolve=False)
     assert len(cids) > 0

@@ -82,18 +82,33 @@ def test_ttl_none_never_expires(tmp_path):
         pubchem.enable_cache()
 
 
-def test_search_polling_is_never_cached(tmp_path):
-    # A regression check for a real bug caught before shipping: caching an
-    # intermediate {"Waiting": ...} response under the search's own
-    # (path, params) key would make a later, unrelated call to the same
-    # search replay stale in-progress state instead of a fresh request.
+def test_only_the_resolved_search_result_is_cached(tmp_path):
+    # Was test_search_polling_is_never_cached: a regression check for a
+    # real bug caught before shipping, caching an intermediate
+    # {"Waiting": ...} response under the search's own (path, params)
+    # would make a later, unrelated call to the same search replay stale
+    # in-progress state instead of a fresh request. That's still true (see
+    # test_async_search.py's test_intermediate_waiting_state_is_never_cached
+    # for the mocked version of that check); what changed is that the
+    # search's own *resolved* result is now cached too, the same as any
+    # other lookup (see _client.request_search()'s docstring for why). So
+    # this checks the current, narrower claim: exactly one entry lands
+    # (the final body, never an intermediate one), and it's actually
+    # usable, a repeat call doesn't hit the network again.
     pubchem.enable_cache(cache_dir=str(tmp_path))
     try:
         pubchem.clear_cache()
         pubchem.similar_compounds(
             "CC(=O)OC1=CC=CC=C1C(=O)O", threshold=95, max_records=5, resolve=False
         )
-        assert list(tmp_path.glob("*.json")) == []
+        cached_files = list(tmp_path.glob("*.json"))
+        assert len(cached_files) == 1
+
+        session = _client._get_session()
+        with mock.patch.object(session, "get", side_effect=AssertionError("network hit on a cached search")):
+            pubchem.similar_compounds(
+                "CC(=O)OC1=CC=CC=C1C(=O)O", threshold=95, max_records=5, resolve=False
+            )
     finally:
         pubchem.enable_cache()
 

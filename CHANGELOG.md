@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.9.0
+
+Fixes two client-side gaps found running a real batch workload (a few
+hundred independent similarity searches, each followed by an assay-data
+join), plus adds the batch primitive that workload needed:
+
+- **A resolved search result is now cached.** `request_search()`
+  (`similar_compounds()`/`substructure_search()`'s underlying async-search
+  protocol) previously never cached anything, not even the final resolved
+  body once polling ended, only the intermediate "still waiting" polls were
+  meant to be excluded. So re-running the exact same search, e.g. resuming
+  a crashed batch job partway through, always repeated the full live
+  search (including any async poll) even though the `resolve_many()` call
+  that follows it was already cached. The final body is now written to the
+  same on-disk cache as any other lookup, under the search's own
+  `(path, params)`; the polling calls themselves stay uncached, unchanged.
+- **A malformed-but-real PubChem response no longer crashes the caller.**
+  Verified live 2026-09-04, mid a large batch: a `concise`/`assaysummary`
+  response can carry a depositor free-text field (an assay comment or
+  description) with a raw, unescaped ASCII control character, which the
+  standard JSON decoder (`strict=True`, the default for both `json.loads`
+  and `requests.Response.json()`) rejects outright as "Invalid control
+  character", regardless of retries, since the identical bytes come back
+  every time. `request()` now falls back to `json.loads(text, strict=False)`,
+  the stdlib's own documented escape hatch for exactly this, before giving
+  up; a response that's corrupted for a real reason (truncation, garbage)
+  still raises a clear `PubChemError` instead of a bare
+  `json.JSONDecodeError`.
+- **New `similar_compounds_many(smiles_list, ...)`**: `similar_compounds()`
+  for many query structures at once, dispatched through a small thread
+  pool (`max_workers`, default 5, deliberately lower than
+  `resolve_many()`'s 8; see the function's docstring for why) rather than
+  one query at a time. Returns a `dict` keyed by input SMILES so every
+  query gets an entry, empty list included. Pairs with the existing
+  `compound_assay_results_many()` for "find every close neighbor of a set
+  of compounds, then pull assay data for all of them" in two calls instead
+  of a hand-rolled loop. No batched form of `substructure_search()` yet;
+  add one if a real workload needs it the way this one needed
+  `similar_compounds_many()`.
+
 ## 0.8.0
 
 Adds `dose_response()`/`download_dose_response()`: the raw, un-curated

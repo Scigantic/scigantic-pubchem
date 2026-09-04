@@ -75,11 +75,15 @@ hits = pubchem.similar_compounds("CC(=O)OC1=CC=CC=C1C(=O)O", threshold=95, max_r
 
 pubchem.substructure_search("c1ccccc1", query_type="smiles")     # every compound containing a benzene ring
 pubchem.substructure_search("[#6]1[#6][#6][#6][#6][#6]1", query_type="smarts")  # the SMARTS equivalent
+
+pubchem.similar_compounds_many([smiles_1, smiles_2, ...])  # {smiles_1: [...], smiles_2: [...], ...}
 ```
 
 `scigantic-chembl`'s `similar_compounds()`/`substructure_search()` precompute fingerprints once and search them locally: fast, but bounded to the roughly 1.68M ChEMBL compounds that carry a comparable measurement. This runs the search on PubChem's own servers, live, over the full ~120M-compound corpus, verified sub-second for a typical query and with no local fingerprint database to build or hold in memory. PubChemPy exposes the same PUG REST capability as a raw `searchtype="similarity"`/`"substructure"` parameter to its generic `get_compounds()`; this package gives it a named function, and keeps `query_type="smiles"` and `"smarts"` as separate, explicit paths rather than guessing between them, since they're genuinely different endpoints with different matching semantics (verified live: the same ring given as SMILES versus SMARTS returns overlapping but not identical results).
 
-An expensive search can respond asynchronously, with PubChem handing back a job to poll rather than blocking the connection; handled transparently, using the same underlying protocol PubChemPy implements. Polling starts at 0.5s and doubles up to a 5s cap rather than a flat interval, so a fast job gets checked sooner and a slow one (a real, measured case took 30-60s) stops paying for a tight interval it never needed. Every live query tried during development resolved synchronously, even a maximally broad single-carbon substructure search, so the polling loop itself is verified with a scripted mock response sequence rather than left checked only against documentation.
+An expensive search can respond asynchronously, with PubChem handing back a job to poll rather than blocking the connection; handled transparently, using the same underlying protocol PubChemPy implements. Polling starts at 0.5s and doubles up to a 5s cap rather than a flat interval, so a fast job gets checked sooner and a slow one (a real, measured case took 30-60s) stops paying for a tight interval it never needed. Every live query tried during development resolved synchronously, even a maximally broad single-carbon substructure search, so the polling loop itself is verified with a scripted mock response sequence rather than left checked only against documentation. Once a search resolves, the result is cached under its own query the same as any other lookup, so re-running the same search (resuming a batch job after a crash, say) doesn't re-pay the live search, poll included.
+
+`similar_compounds_many()` runs several independent similarity searches concurrently (there's no PubChem-side batched form of this endpoint, unlike `resolve_many()`'s comma-separated CID list), returning a dict keyed by the input SMILES so nothing is silently dropped. It's the composable half of "find every close neighbor of a set of compounds, then pull assay data for all of them": pair it with `compound_assay_results_many()` on the returned CIDs.
 
 ### BioAssay
 

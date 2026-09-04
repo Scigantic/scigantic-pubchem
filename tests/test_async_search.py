@@ -16,7 +16,7 @@ from unittest import mock
 
 import pytest
 
-from scigantic_pubchem import _client
+from scigantic_pubchem import _client, cache
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +34,22 @@ def _no_rate_limit_wait(monkeypatch):
     clock granular enough for both concerns at once.
     """
     monkeypatch.setattr(_client._limiter, "acquire", lambda: None)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_cache(tmp_path):
+    """request_search() now caches its resolved result (see its docstring),
+    so without this every test here would read and write the real default
+    cache directory under the same (path, params) key -- "smiles": "C" in
+    most tests below -- and later tests would silently hit a cache entry an
+    earlier test in this file left behind instead of exercising the mocked
+    session at all.
+    """
+    cache.enable_cache(cache_dir=str(tmp_path))
+    try:
+        yield
+    finally:
+        cache.enable_cache()  # back to the default location for other test files
 
 
 def _mock_response(status_code, json_body, headers=None):
@@ -71,6 +87,39 @@ def test_immediate_result_does_not_poll():
         body = _client.request_search("/compound/fastsimilarity_2d/smiles/cids/JSON", params={"smiles": "C"})
     assert body == {"IdentifierList": {"CID": [2244]}}
     assert get.call_count == 1
+
+
+def test_resolved_search_is_cached_for_a_repeat_call():
+    # First call: async, needs a poll before it resolves.
+    waiting = _mock_response(200, {"Waiting": {"ListKey": "abc123"}})
+    done = _mock_response(200, {"IdentifierList": {"CID": [2244, 5161]}})
+    session = _client._get_session()
+    with mock.patch.object(session, "get", side_effect=[waiting, done]):
+        with mock.patch("time.sleep"):
+            first = _client.request_search("/compound/fastsimilarity_2d/smiles/cids/JSON", params={"smiles": "C"})
+    assert first == {"IdentifierList": {"CID": [2244, 5161]}}
+
+    # Second call, identical (path, params): no network at all, not even
+    # the initial search request, let alone a poll -- the resolved result
+    # from the first call was cached, not just the CID lookup that would
+    # follow it in similar_compounds()/resolve_many().
+    with mock.patch.object(session, "get", side_effect=AssertionError("network hit on a cached search")):
+        second = _client.request_search("/compound/fastsimilarity_2d/smiles/cids/JSON", params={"smiles": "C"})
+    assert second == first
+
+
+def test_intermediate_waiting_state_is_never_cached():
+    # A caller that gives up (or crashes) mid-poll must not leave a
+    # "Waiting" body cached under the search's own (path, params): a later,
+    # unrelated call to the same search would replay that stale
+    # in-progress state forever instead of making a fresh request.
+    waiting = _mock_response(200, {"Waiting": {"ListKey": "abc123"}})
+    session = _client._get_session()
+    with mock.patch.object(session, "get", side_effect=[waiting]):
+        with mock.patch("time.sleep", side_effect=KeyboardInterrupt):
+            with pytest.raises(KeyboardInterrupt):
+                _client.request_search("/compound/fastsimilarity_2d/smiles/cids/JSON", params={"smiles": "C"})
+    assert cache.get("/compound/fastsimilarity_2d/smiles/cids/JSON", {"smiles": "C"}) is None
 
 
 def test_poll_wait_doubles_then_caps():
