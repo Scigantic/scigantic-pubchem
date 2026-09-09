@@ -176,6 +176,16 @@ Both are on-demand DuckDB queries against the public [scigantic-chembl](https://
 $ pip install "scigantic-pubchem[bridge]"
 ```
 
+### Patents, via scigantic-surechembl
+
+```python
+pubchem.surechembl_ids(2244)                # [1353, 29350479], SureChEMBL's ids for this structure
+pubchem.surechembl_patents(2244, max_results=50)
+# [PatentHit(doc_id='CN-105308118-B', title='Resin composition, ...'), ...]
+```
+
+The patents a compound appears in come from [SureChEMBL](https://www.surechembl.org/) (EMBL-EBI, 31M compounds extracted from 45M patents) through [scigantic-surechembl](https://github.com/Scigantic/scigantic-surechembl), which maps the CID to SureChEMBL's ids via UniChem and takes the union of their patent lists. That package also has the patent text, the chemistry extracted from each document, Solr search and structure search; these two functions are the pointer from a CID into it. Same `bridge` extra.
+
 ## Local mirror
 
 Everything above is a live PUG REST call. For CID-keyed bulk or offline work, this package also reads [s3://scigantic-pubchem](https://github.com/Scigantic/scigantic-pubchem), a weekly-refreshed local parquet mirror of PubChem's compound identifier/name/mass registry (~15.5 GB: SMILES, titles, IUPAC names, InChI/InChIKeys, formula/mass, parent CIDs, CID-to-SID provenance, and synonyms):

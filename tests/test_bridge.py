@@ -57,3 +57,12 @@ def test_concurrent_calls_return_correct_distinct_results():
         t.join()
 
     assert results == sequential
+
+
+def test_surechembl_patents_for_aspirin():
+    ids = pubchem.surechembl_ids(2244)
+    assert 1353 in ids
+    hits = pubchem.surechembl_patents(2244, max_results=5)
+    assert len(hits) == 5
+    assert all(h.doc_id and h.url.startswith("https://www.surechembl.org/patent/") for h in hits)
+    assert pubchem.surechembl_patents(999999999) == []

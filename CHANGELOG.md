@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0
+
+- `surechembl_ids(cid)` and `surechembl_patents(cid, max_results)`: the
+  SureChEMBL ids for a CID and the patents the compound was found in,
+  through scigantic-surechembl (added to the `bridge` extra). The pointer
+  from a PubChem compound into patent chemistry; the reverse direction
+  (`patents_for_pubchem_cid`, cross-references, patent text) lives in
+  that package.
+
 ## 0.9.0
 
 Fixes two client-side gaps found running a real batch workload (a few

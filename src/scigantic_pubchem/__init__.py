@@ -21,7 +21,7 @@ from .bioassay import (
     download_assay_results,
     download_dose_response,
 )
-from .bridge import bindingdb_measurements, chembl_context
+from .bridge import bindingdb_measurements, chembl_context, surechembl_ids, surechembl_patents
 from .cache import cache_dir, disable_cache, enable_cache, is_cache_enabled
 from .cache import clear as clear_cache
 from .gene_protein import (
@@ -73,6 +73,8 @@ __all__ = [
     "pdb_structures_many",
     "chembl_context",
     "bindingdb_measurements",
+    "surechembl_ids",
+    "surechembl_patents",
     "assay_summary",
     "assay_results",
     "assay_cids",

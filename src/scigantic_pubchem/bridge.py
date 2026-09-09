@@ -114,3 +114,34 @@ def bindingdb_measurements(
         f"FROM read_parquet('{path}') WHERE pubchem_cid = ?",
         [cid],
     ).df()
+
+
+def surechembl_ids(cid: int) -> list[int]:
+    """The SureChEMBL compound ids UniChem maps this PubChem CID to, via
+    scigantic-surechembl (a structure can sit under more than one
+    SureChEMBL id; aspirin, CID 2244, is 1353 and 29350479)."""
+    surechembl = _surechembl()
+    return list(surechembl.surechembl_ids_for("pubchem", int(cid)))
+
+
+def surechembl_patents(cid: int, max_results: int = 100) -> list[Any]:
+    """Patents in which this PubChem compound was found, from SureChEMBL
+    (EMBL-EBI's 31M compounds extracted from 45M patents), as
+    scigantic_surechembl.PatentHit records (doc_id, title,
+    publication_date, assignee, url). The union over every SureChEMBL id
+    the CID maps to. Use scigantic-surechembl directly for the patent
+    text, extracted chemistry and structure search; this is the pointer
+    from a CID into that package.
+    """
+    surechembl = _surechembl()
+    return list(surechembl.patents_for_pubchem_cid(int(cid), max_results=max_results))
+
+
+def _surechembl() -> Any:
+    try:
+        import scigantic_surechembl
+    except ImportError as exc:
+        raise ImportError(
+            "this needs scigantic-surechembl. Install with: pip install 'scigantic-pubchem[bridge]'"
+        ) from exc
+    return scigantic_surechembl
