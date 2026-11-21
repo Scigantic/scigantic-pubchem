@@ -22,6 +22,8 @@ classifiers = [
   "Typing :: Typed",
   "Topic :: Scientific/Engineering :: Bio-Informatics",
   "Topic :: Scientific/Engineering :: Chemistry",
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
 ]
 
 dependencies = [
@@ -46,6 +48,7 @@ dev = ["pytest>=7", "mypy>=1.10", "types-requests", "pandas-stubs"]
 Homepage = "https://scigantic.com"
 Repository = "https://github.com/Scigantic/scigantic-pubchem"
 Issues = "https://github.com/Scigantic/scigantic-pubchem/issues"
+Documentation = "https://github.com/Scigantic/scigantic-pubchem#readme"
 
 [project.scripts]
 scigantic-pubchem = "scigantic_pubchem.cli:main"
