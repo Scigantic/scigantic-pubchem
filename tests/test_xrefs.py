@@ -79,5 +79,6 @@ def test_pdb_structures_many():
     batched = pubchem.pdb_structures_many(cids)
     assert set(batched) == set(cids)  # every requested CID present, unlike raw xrefs_many
     assert batched[1] == []
-    assert batched[2244] == pubchem.pdb_structures(2244)
-    assert batched[5291] == pubchem.pdb_structures(5291)
+    # Same IDs either way; PUG REST orders the batch and single responses differently.
+    assert sorted(batched[2244]) == sorted(pubchem.pdb_structures(2244))
+    assert sorted(batched[5291]) == sorted(pubchem.pdb_structures(5291))
