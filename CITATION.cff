@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: scigantic-pubchem
+abstract: "Query PubChem live via PUG REST with rate-limit-aware retry and an expiring cache. Covers similarity, substructure and cross-reference search, bioassay, gene and protein data, the Tox21 Data Challenge panel, and CID-keyed reads of a local parquet mirror."
+authors:
+  - name: Scigantic
+    website: https://scigantic.com
+repository-code: https://github.com/Scigantic/scigantic-pubchem
+url: https://pypi.org/project/scigantic-pubchem/
+license: MIT-0
+keywords:
+  - "pubchem"
+  - "cheminformatics"
+  - "pug-rest"
+  - "drug-discovery"
+  - "identifier-resolution"
+  - "bioassay"
+  - "gene"
+  - "protein"
+version: "0.10.1"
+date-released: '2026-10-05'
