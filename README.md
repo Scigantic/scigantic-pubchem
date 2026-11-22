@@ -11,7 +11,7 @@
         <img alt="License" src="https://img.shields.io/github/license/Scigantic/scigantic-pubchem" /></a>
 </p>
 
-Query PubChem live via PUG REST. No mirror, no download, no local database.
+Look up compounds in [PubChem](https://pubchem.ncbi.nlm.nih.gov/) from Python: resolve a name, SMILES, InChIKey or CID, run similarity and substructure searches over the full database, and pull BioAssay, gene, protein and Tox21 data. Calls go live to PUG REST with rate-limit-aware retry and an expiring cache. No mirror, no download, no local database.
 
 ```python
 import scigantic_pubchem as pubchem
@@ -25,6 +25,10 @@ print(aspirin.cid, aspirin.smiles, aspirin.inchi_key)
 ```console
 $ pip install scigantic-pubchem
 ```
+
+## Try it on hosted data
+
+The Scigantic catalog entry for [PubChem's compound identifier, name and mass registry](https://scigantic.com/archive/234788d8-cb37-5487-b5a0-b36808c141b0?utm_source=github&utm_medium=readme&utm_campaign=scigantic-pubchem) opens a Jupyter notebook in the browser with the parquet mirror described under [Local mirror](#local-mirror) already mounted. The sample notebook [PubChem vs ChEMBL, live search vs curated mirror](https://scigantic.com/sample/chem-pubchem-chembl?utm_source=github&utm_medium=readme&utm_campaign=scigantic-pubchem) resolves one drug against both and runs with nothing to download.
 
 ## Why this exists
 

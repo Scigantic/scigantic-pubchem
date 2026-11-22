@@ -46,6 +46,7 @@ dev = ["pytest>=7", "mypy>=1.10", "types-requests", "pandas-stubs"]
 
 [project.urls]
 Homepage = "https://scigantic.com"
+"PubChem in a hosted notebook" = "https://scigantic.com/archive/234788d8-cb37-5487-b5a0-b36808c141b0?utm_source=pypi&utm_medium=project-urls&utm_campaign=scigantic-pubchem"
 Repository = "https://github.com/Scigantic/scigantic-pubchem"
 Issues = "https://github.com/Scigantic/scigantic-pubchem/issues"
 Documentation = "https://github.com/Scigantic/scigantic-pubchem#readme"
