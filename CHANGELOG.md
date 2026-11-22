@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.2
+
+- README opens with what the package reads, adds a runnable example near the top and links the matching dataset pages. Project URLs and classifiers updated. No code changes.
+
 ## 0.10.1
 
 - Fix: inside a Jupyter kernel without ipywidgets (the minimal and database
